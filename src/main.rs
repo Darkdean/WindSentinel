@@ -11,7 +11,6 @@
  mod network;
  mod policy;
  mod process;
- mod remote_shell;
  mod types;
  
  use config::AgentConfig;
@@ -71,18 +70,7 @@
          }
      });
  
-    let config_clone = config.clone();
-    let policy_clone = policy_state.clone();
-    let log_store_clone = log_store.clone();
-     tokio::spawn(async move {
-         loop {
-             if let Err(err) = remote_shell::ensure_shell(&config_clone, &policy_clone).await {
-                let _ = log_store_clone.lock().await.append_record(LogRecord::error(RecordKind::Shell, err.to_string())).await;
-             }
-             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-         }
-     });
- 
+
      loop {
          tokio::time::sleep(std::time::Duration::from_secs(60)).await;
      }

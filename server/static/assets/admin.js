@@ -44,7 +44,7 @@ async function loadPage(page) {
 
 function setNavVisibility(role) {
   const map = {
-    admin: ["agents","agent_manage","config","policy","rules","logs","audits","shell","users","log_management","login_blacklist","login_whitelist","api_keys"],
+    admin: ["agents","agent_manage","config","policy","rules","logs","audits","users","log_management","login_blacklist","login_whitelist","api_keys"],
     auditor: ["agents","logs","audits"],
     operator: ["agents","agent_manage","config","policy","rules","login_blacklist","login_whitelist"]
   };

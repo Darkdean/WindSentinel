@@ -11,5 +11,5 @@ M0 baseline skeleton. Complete during admin/server implementation.
 - deferred functionality exclusions for V1
 
 ## Current known gaps
-- remote shell UI must be removed or hidden for V1
+- remote shell UI/routes/config surfaces are removed or hidden for V1
 - stop/uninstall admin workflow must enforce role permissions and MFA

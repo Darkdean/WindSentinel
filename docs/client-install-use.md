@@ -17,4 +17,4 @@ M0 baseline skeleton. This document must be completed and kept in sync during im
 ## Current known gaps
 - Linux installer/service flow not yet implemented
 - stop/uninstall authorization protocol not yet implemented
-- remote shell is out of scope for V1 and must not appear in this guide
+- remote shell is out of scope for V1 and removed from the V1-visible client config/runtime surface

@@ -18,10 +18,8 @@ class PolicyResponse(BaseModel):
     kill_pids: List[int]
     block_network_pids: List[int]
     block_all_network: bool
-    start_shell: bool
     lock: Optional[Dict[str, Any]] = None
     unlock: Optional[Dict[str, Any]] = None
-    session_key_b64: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -44,10 +42,6 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str
-
-
-class ShellCommand(BaseModel):
-    command: str
 
 
 class SqlQuery(BaseModel):
@@ -91,8 +85,6 @@ class AgentConfigPayload(BaseModel):
     agent_id: Optional[str] = None
     server_url: str
     shared_key_b64: str
-    shell_host: str
-    shell_port: int
 
 
 class AgentConfigTemplatePayload(BaseModel):

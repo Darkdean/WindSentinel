@@ -9,7 +9,7 @@
 - `src/process.rs` — process collection
 - `src/network.rs` — network collection
 - `src/lock.rs` — file lock/unlock behavior
-- `src/remote_shell.rs` — currently present in code, excluded from V1
+- Remote shell implementation files are removed from the V1-active code surface and are not part of the shipped runtime/config/API/UI flow
 
 ## Server (Python)
 - `server/main.py` — API and admin logic

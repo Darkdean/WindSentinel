@@ -14,7 +14,6 @@ import zipfile
 import uuid
 import logging
 import traceback
-from collections import defaultdict, deque
 from typing import Any, Dict, Optional
 
 import pyotp
@@ -46,7 +45,6 @@ from models import (
     MfaVerifyRequest,
     PolicyResponse,
     RulePayload,
-    ShellCommand,
     SqlQuery,
     TagPayload,
     LogExportPayload,
@@ -137,9 +135,6 @@ SHARED_KEY_B64 = os.getenv("WINDSENTINEL_SHARED_KEY_B64", base64.b64encode(b"\x0
 SHARED_KEY = base64.b64decode(SHARED_KEY_B64)
 
 TOKENS: Dict[str, Dict[str, Any]] = {}
-SHELL_CONNECTIONS: Dict[str, Dict[str, Any]] = {}
-SHELL_OUTPUTS: Dict[str, deque] = defaultdict(lambda: deque(maxlen=200))
-SHELL_HISTORY: Dict[str, deque] = defaultdict(lambda: deque(maxlen=2000))
 POLICY_KEYS: Dict[str, str] = {}
 
 RULES = None
@@ -153,7 +148,6 @@ ROLE_PERMISSIONS = {
         "rules_manage",
         "audits_view",
         "logs_query",
-        "shell_manage",
         "users_manage",
         "api_keys_manage",
         "log_export_manage",
@@ -166,8 +160,8 @@ ROLE_PERMISSIONS = {
 }
 
 PAGE_PERMISSIONS = {
-    "personal_mfa": {"agents_view", "audits_view", "logs_query", "agents_manage", "policy_manage", "config_manage", "rules_manage", "shell_manage", "users_manage", "api_keys_manage", "log_export_manage", "log_retention_manage"},
-    "personal_password": {"agents_view", "audits_view", "logs_query", "agents_manage", "policy_manage", "config_manage", "rules_manage", "shell_manage", "users_manage", "api_keys_manage", "log_export_manage", "log_retention_manage"},
+    "personal_mfa": {"agents_view", "audits_view", "logs_query", "agents_manage", "policy_manage", "config_manage", "rules_manage", "users_manage", "api_keys_manage", "log_export_manage", "log_retention_manage"},
+    "personal_password": {"agents_view", "audits_view", "logs_query", "agents_manage", "policy_manage", "config_manage", "rules_manage", "users_manage", "api_keys_manage", "log_export_manage", "log_retention_manage"},
     "agents": {"agents_view"},
     "agent_manage": {"agents_manage"},
     "config": {"config_manage"},
@@ -176,7 +170,6 @@ PAGE_PERMISSIONS = {
     "audits": {"audits_view"},
     "rules": {"rules_manage"},
     "logs": {"logs_query"},
-    "shell": {"shell_manage"},
     "api_keys": {"api_keys_manage"},
     "log_management": {"log_export_manage", "log_retention_manage"},
     "login_blacklist": {"login_blacklist_manage"},
@@ -229,8 +222,6 @@ def default_agent_config(request: Request):
         "agent_id": str(uuid.uuid4()),
         "server_url": server_url,
         "shared_key_b64": base64.b64encode(os.urandom(32)).decode(),
-        "shell_host": host.split(":")[0],
-        "shell_port": 9001,
     }
 
 
@@ -569,7 +560,6 @@ async def audit_middleware(request: Request, call_next):
 async def startup():
     init_db()
     ensure_rules()
-    asyncio.create_task(shell_server())
     asyncio.create_task(retention_worker())
 
 
@@ -602,14 +592,12 @@ async def policy(agent_id: str):
     payload = get_policy(agent_id)
     if not payload:
         payload = {
-            "enabled_modules": ["process", "network", "health", "shell", "lock"],
+            "enabled_modules": ["process", "network", "health", "lock"],
             "kill_pids": [],
             "block_network_pids": [],
             "block_all_network": False,
-            "start_shell": False,
             "lock": None,
             "unlock": None,
-            "session_key_b64": None,
         }
     return payload
 
@@ -1362,26 +1350,6 @@ async def set_policy_batch(payload: BatchPolicyPayload, request: Request, user=D
     return result
 
 
-@app.post("/admin/policy/{agent_id}/shell")
-async def start_shell(agent_id: str, request: Request, user=Depends(require_auth)):
-    require_access(user, {"admin"}, "shell_manage")
-    session_key = base64.b64encode(os.urandom(32)).decode()
-    POLICY_KEYS[agent_id] = session_key
-    payload = {
-        "enabled_modules": ["process", "network", "health", "shell", "lock"],
-        "kill_pids": [],
-        "block_network_pids": [],
-        "block_all_network": False,
-        "start_shell": True,
-        "lock": None,
-        "unlock": None,
-        "session_key_b64": session_key,
-    }
-    set_policy(agent_id, payload)
-    audit_action(user, "start_shell", request, target=agent_id)
-    return {"status": "ok"}
-
-
 @app.post("/admin/policy/{agent_id}/lock")
 async def lock_agent(agent_id: str, request: Request, user=Depends(require_auth)):
     require_access(user, {"admin"}, "policy_manage")
@@ -1396,14 +1364,12 @@ async def lock_agent(agent_id: str, request: Request, user=Depends(require_auth)
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode()
     payload = {
-        "enabled_modules": ["process", "network", "health", "shell", "lock"],
+        "enabled_modules": ["process", "network", "health", "lock"],
         "kill_pids": [],
         "block_network_pids": [],
         "block_all_network": False,
-        "start_shell": False,
         "lock": {"public_key_pem": public_pem},
         "unlock": None,
-        "session_key_b64": None,
     }
     set_policy(agent_id, payload)
     POLICY_KEYS[agent_id] = private_pem
@@ -1418,113 +1384,17 @@ async def unlock_agent(agent_id: str, request: Request, user=Depends(require_aut
     if not private_pem:
         raise HTTPException(status_code=400, detail="no key")
     payload = {
-        "enabled_modules": ["process", "network", "health", "shell", "lock"],
+        "enabled_modules": ["process", "network", "health", "lock"],
         "kill_pids": [],
         "block_network_pids": [],
         "block_all_network": False,
-        "start_shell": False,
         "lock": None,
         "unlock": {"private_key_pem": private_pem},
-        "session_key_b64": None,
     }
     set_policy(agent_id, payload)
     POLICY_KEYS.pop(agent_id, None)
     audit_action(user, "unlock", request, target=agent_id)
     return {"status": "ok"}
-
-
-@app.post("/admin/shell/{agent_id}/send")
-async def send_shell(agent_id: str, request: ShellCommand, req: Request, user=Depends(require_auth)):
-    require_access(user, {"admin"}, "shell_manage")
-    conn = SHELL_CONNECTIONS.get(agent_id)
-    if not conn:
-        raise HTTPException(status_code=404, detail="no shell")
-    key = base64.b64decode(conn["session_key"])
-    frame = build_frame(key, request.command.encode())
-    SHELL_HISTORY[agent_id].append({"ts": int(time.time()), "kind": "input", "data": request.command})
-    audit_action(user, "shell_send", req, target=agent_id)
-    conn["writer"].write(frame)
-    await conn["writer"].drain()
-    return {"status": "ok"}
-
-
-@app.get("/admin/shell/{agent_id}/recv")
-async def recv_shell(agent_id: str, user=Depends(require_auth)):
-    require_access(user, {"admin"}, "shell_manage")
-    output = []
-    while SHELL_OUTPUTS[agent_id]:
-        chunk = SHELL_OUTPUTS[agent_id].popleft().decode(errors="ignore")
-        output.append(chunk)
-        SHELL_HISTORY[agent_id].append({"ts": int(time.time()), "kind": "output", "data": chunk})
-    return {"output": "".join(output)}
-
-
-@app.get("/admin/shell/{agent_id}/history")
-async def shell_history(agent_id: str, user=Depends(require_auth)):
-    require_access(user, {"admin"}, "shell_manage")
-    items = list(SHELL_HISTORY[agent_id])
-    output = "".join([item["data"] for item in items])
-    return {"output": output, "items": items}
-
-
-@app.get("/admin/shell/{agent_id}/history/search")
-async def search_shell_history(
-    agent_id: str,
-    q: Optional[str] = None,
-    kind: Optional[str] = None,
-    offset: int = 0,
-    limit: int = 200,
-    user=Depends(require_auth),
-):
-    require_access(user, {"admin"}, "shell_manage")
-    items = list(SHELL_HISTORY[agent_id])
-    if kind:
-        items = [item for item in items if item["kind"] == kind]
-    if q:
-        items = [item for item in items if q in item["data"]]
-    total = len(items)
-    paged = items[offset : offset + limit]
-    return {"items": paged, "total": total, "offset": offset, "limit": limit}
-
-
-@app.delete("/admin/shell/{agent_id}/history")
-async def clear_shell_history(agent_id: str, request: Request, user=Depends(require_auth)):
-    require_access(user, {"admin"}, "shell_manage")
-    SHELL_HISTORY[agent_id].clear()
-    audit_action(user, "shell_history_clear", request, target=agent_id)
-    return {"status": "ok"}
-
-
-@app.get("/admin/shell/{agent_id}/history/export")
-async def export_shell_history(
-    agent_id: str,
-    format: str = "json",
-    q: Optional[str] = None,
-    kind: Optional[str] = None,
-    since: Optional[int] = None,
-    until: Optional[int] = None,
-    user=Depends(require_auth),
-):
-    require_access(user, {"admin"}, "shell_manage")
-    items = list(SHELL_HISTORY[agent_id])
-    if kind:
-        items = [item for item in items if item["kind"] == kind]
-    if q:
-        items = [item for item in items if q in item["data"]]
-    if since is not None:
-        items = [item for item in items if item["ts"] >= int(since)]
-    if until is not None:
-        items = [item for item in items if item["ts"] <= int(until)]
-    if format == "json":
-        return {"items": items}
-    if format == "csv":
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(["ts", "kind", "data"])
-        for item in items:
-            writer.writerow([item["ts"], item["kind"], item["data"]])
-        return PlainTextResponse(buffer.getvalue(), media_type="text/csv")
-    raise HTTPException(status_code=400, detail="invalid format")
 
 
 def parse_records(raw: bytes):
@@ -1555,14 +1425,12 @@ def apply_rules(agent_id: str, record: Dict[str, Any]):
     if "pid" in record.get("data", {}):
         kill_pids.append(record["data"]["pid"])
     policy = {
-        "enabled_modules": ["process", "network", "health", "shell", "lock"],
+        "enabled_modules": ["process", "network", "health", "lock"],
         "kill_pids": kill_pids,
         "block_network_pids": kill_pids,
         "block_all_network": False,
-        "start_shell": False,
         "lock": None,
         "unlock": None,
-        "session_key_b64": None,
     }
     set_policy(agent_id, policy)
 
@@ -1710,37 +1578,3 @@ def get_user_mfa(username: str) -> str:
     return row[0]
 
 
-async def shell_server():
-    server = await asyncio.start_server(handle_shell, host="0.0.0.0", port=9001)
-    async with server:
-        await server.serve_forever()
-
-
-async def handle_shell(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    try:
-        header = await reader.readexactly(4)
-        length = int.from_bytes(header, "big")
-        payload = await reader.readexactly(length)
-        handshake = aesgcm_decrypt(SHARED_KEY, payload)
-        info = json.loads(handshake.decode())
-        agent_id = info["agent_id"]
-        session_key = info["session_key_b64"]
-        SHELL_CONNECTIONS[agent_id] = {"writer": writer, "session_key": session_key}
-        await read_shell_stream(agent_id, reader, session_key)
-    except Exception:
-        writer.close()
-
-
-async def read_shell_stream(agent_id: str, reader: asyncio.StreamReader, session_key: str):
-    key = base64.b64decode(session_key)
-    while True:
-        header = await reader.readexactly(4)
-        length = int.from_bytes(header, "big")
-        payload = await reader.readexactly(length)
-        decrypted = aesgcm_decrypt(key, payload)
-        SHELL_OUTPUTS[agent_id].append(decrypted)
-
-
-def build_frame(key: bytes, data: bytes) -> bytes:
-    encrypted = aesgcm_encrypt(key, data)
-    return len(encrypted).to_bytes(4, "big") + encrypted

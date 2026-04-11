@@ -11,7 +11,7 @@
 - systemd-managed agent residency
 - bare-metal server/admin deployment first
 - Docker Compose artifact after bare-metal deployment is complete
-- remote shell excluded from V1
+- remote shell excluded from V1 runtime, API, policy, and UI surfaces
 
 ## To be detailed during implementation
 - deployment topology

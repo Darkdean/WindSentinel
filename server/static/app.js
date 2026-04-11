@@ -1,6 +1,5 @@
 let token = localStorage.getItem("windsentinel_token");
 let currentAgent = null;
-let shellTimer = null;
 let agentGroupFilter = "";
 let agentTagFilter = "";
 let agentSearch = "";
@@ -29,7 +28,6 @@ bind("btn-change-pass", "click", changePassword);
 bind("btn-load-agents", "click", loadAgents);
 bind("agent-list", "change", selectAgent);
 bind("btn-send-policy", "click", sendPolicy);
-bind("btn-start-shell", "click", startShell);
 bind("btn-lock", "click", lockAgent);
 bind("btn-unlock", "click", unlockAgent);
 bind("btn-load-users", "click", loadUsers);
@@ -47,14 +45,6 @@ bind("btn-rule-export", "click", exportRules);
 bind("btn-rule-import", "click", importRules);
 bind("btn-rule-import-preview", "click", previewImportRules);
 bind("btn-run-query", "click", runQuery);
-bind("btn-shell-history", "click", loadShellHistory);
-bind("btn-shell-clear", "click", clearShellHistory);
-bind("btn-shell-export-json", "click", () => exportShellHistory("json"));
-bind("btn-shell-export-csv", "click", () => exportShellHistory("csv"));
-bind("btn-shell-send", "click", sendShell);
-bind("btn-shell-search", "click", searchShellHistory);
-bind("btn-shell-prev", "click", () => pageShellHistory(-1));
-bind("btn-shell-next", "click", () => pageShellHistory(1));
 bind("btn-policy-group", "click", sendPolicyToGroup);
 bind("btn-policy-tag", "click", sendPolicyToTag);
 bind("btn-policy-retry", "click", retryPolicyBatch);
@@ -82,14 +72,6 @@ bind("btn-tag-create", "click", createTag);
 bind("btn-tag-delete", "click", deleteTag);
 
 function initDefaults() {
-  const sinceEl = document.getElementById("shell-since-date");
-  const untilEl = document.getElementById("shell-until-date");
-  if (sinceEl && untilEl && !sinceEl.value && !untilEl.value) {
-    const now = new Date();
-    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    sinceEl.value = toLocalInput(since);
-    untilEl.value = toLocalInput(now);
-  }
   const auditSince = document.getElementById("audit-since-date");
   const auditUntil = document.getElementById("audit-until-date");
   if (auditSince && auditUntil && !auditSince.value && !auditUntil.value) {
@@ -120,14 +102,10 @@ function getConfigPayload() {
   const agentId = document.getElementById("cfg-agent-id")?.value || "";
   const serverUrl = document.getElementById("cfg-server-url")?.value || "";
   const sharedKey = document.getElementById("cfg-shared-key")?.value || "";
-  const shellHost = document.getElementById("cfg-shell-host")?.value || "";
-  const shellPort = parseInt(document.getElementById("cfg-shell-port")?.value || "9001", 10);
   return {
     agent_id: agentId || null,
     server_url: serverUrl,
-    shared_key_b64: sharedKey,
-    shell_host: shellHost,
-    shell_port: shellPort
+    shared_key_b64: sharedKey
   };
 }
 
@@ -144,8 +122,6 @@ async function loadConfigTemplate() {
   if (document.getElementById("cfg-agent-id")) document.getElementById("cfg-agent-id").value = cfg.agent_id || "";
   if (document.getElementById("cfg-server-url")) document.getElementById("cfg-server-url").value = cfg.server_url || "";
   if (document.getElementById("cfg-shared-key")) document.getElementById("cfg-shared-key").value = cfg.shared_key_b64 || "";
-  if (document.getElementById("cfg-shell-host")) document.getElementById("cfg-shell-host").value = cfg.shell_host || "";
-  if (document.getElementById("cfg-shell-port")) document.getElementById("cfg-shell-port").value = String(cfg.shell_port || 9001);
   document.getElementById("cfg-preview").textContent = JSON.stringify(data, null, 2);
   if (data.package) document.getElementById("cfg-meta").textContent = JSON.stringify(data.package, null, 2);
   await loadConfigTemplates();
@@ -254,8 +230,6 @@ async function loadSelectedTemplate() {
   if (document.getElementById("cfg-agent-id")) document.getElementById("cfg-agent-id").value = cfg.agent_id || "";
   if (document.getElementById("cfg-server-url")) document.getElementById("cfg-server-url").value = cfg.server_url || "";
   if (document.getElementById("cfg-shared-key")) document.getElementById("cfg-shared-key").value = cfg.shared_key_b64 || "";
-  if (document.getElementById("cfg-shell-host")) document.getElementById("cfg-shell-host").value = cfg.shell_host || "";
-  if (document.getElementById("cfg-shell-port")) document.getElementById("cfg-shell-port").value = String(cfg.shell_port || 9001);
   document.getElementById("cfg-template-name").value = data.name || "";
   document.getElementById("cfg-preview").textContent = JSON.stringify(data, null, 2);
 }
@@ -497,14 +471,12 @@ async function loadHealth() {
   const policyEl = document.getElementById("policy-json");
   if (policyEl) {
     policyEl.value = JSON.stringify({
-      enabled_modules: ["process", "network", "health", "shell", "lock"],
+      enabled_modules: ["process", "network", "health", "lock"],
       kill_pids: [],
       block_network_pids: [],
       block_all_network: false,
-      start_shell: false,
       lock: null,
       unlock: null,
-      session_key_b64: null
     }, null, 2);
   }
 }
@@ -776,14 +748,6 @@ function pageAgents(direction) {
   loadAgents();
 }
 
-async function startShell() {
-  if (!currentAgent) return;
-  const res = await api("/admin/policy/" + currentAgent + "/shell", { method: "POST" });
-  const data = await res.json();
-  document.getElementById("policy-status").textContent = JSON.stringify(data, null, 2);
-  startShellPoll();
-}
-
 async function lockAgent() {
   if (!currentAgent) return;
   const res = await api("/admin/policy/" + currentAgent + "/lock", { method: "POST" });
@@ -803,15 +767,6 @@ async function runQuery() {
   const res = await api("/admin/logs/query", { method: "POST", body: JSON.stringify({ query }) });
   const data = await res.json();
   document.getElementById("query-result").textContent = JSON.stringify(data, null, 2);
-}
-
-async function sendShell() {
-  if (!currentAgent) return;
-  const cmd = document.getElementById("shell-input").value;
-  const res = await api("/admin/shell/" + currentAgent + "/send", { method: "POST", body: JSON.stringify({ command: cmd + "\n" }) });
-  const data = await res.json();
-  document.getElementById("shell-input").value = "";
-  document.getElementById("policy-status").textContent = JSON.stringify(data, null, 2);
 }
 
 async function loadUsers() {
@@ -1087,93 +1042,6 @@ async function diffRule() {
   renderDiff(document.getElementById("rule-diff"), data.diff || "");
 }
 
-async function loadShellHistory() {
-  if (!currentAgent) return;
-  const res = await api("/admin/shell/" + currentAgent + "/history");
-  const data = await res.json();
-  const out = document.getElementById("shell-output");
-  if (data.items) {
-    out.textContent = data.items.map(item => "[" + item.ts + " " + item.kind + "] " + item.data).join("");
-  } else if (data.output) {
-    out.textContent = data.output;
-  }
-  out.scrollTop = out.scrollHeight;
-}
-
-async function clearShellHistory() {
-  if (!currentAgent) return;
-  const res = await api("/admin/shell/" + currentAgent + "/history", { method: "DELETE" });
-  const data = await res.json();
-  document.getElementById("shell-output").textContent = "";
-  document.getElementById("policy-status").textContent = JSON.stringify(data, null, 2);
-}
-
-async function exportShellHistory(format) {
-  if (!currentAgent) return;
-  const q = document.getElementById("shell-search").value;
-  const kind = document.getElementById("shell-kind").value;
-  const sinceInput = document.getElementById("shell-since-date").value;
-  const untilInput = document.getElementById("shell-until-date").value;
-  const since = sinceInput ? Math.floor(new Date(sinceInput).getTime() / 1000) : null;
-  const until = untilInput ? Math.floor(new Date(untilInput).getTime() / 1000) : null;
-  if (!validateRange(since, until)) return;
-  const params = new URLSearchParams({ format });
-  if (q) params.set("q", q);
-  if (kind) params.set("kind", kind);
-  if (since) params.set("since", String(since));
-  if (until) params.set("until", String(until));
-  const res = await api("/admin/shell/" + currentAgent + "/history/export?" + params.toString());
-  if (format === "json") {
-    const data = await res.json();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "shell_history.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  } else {
-    const text = await res.text();
-    const blob = new Blob([text], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "shell_history.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function searchShellHistory() {
-  const offset = parseInt(document.getElementById("shell-offset").value || "0", 10);
-  const limit = parseInt(document.getElementById("shell-limit").value || "200", 10);
-  await loadShellHistoryPage(offset, limit);
-}
-
-async function pageShellHistory(direction) {
-  const offsetEl = document.getElementById("shell-offset");
-  const limitEl = document.getElementById("shell-limit");
-  const offset = parseInt(offsetEl.value || "0", 10);
-  const limit = parseInt(limitEl.value || "200", 10);
-  const next = Math.max(0, offset + direction * limit);
-  offsetEl.value = String(next);
-  await loadShellHistoryPage(next, limit);
-}
-
-async function loadShellHistoryPage(offset, limit) {
-  if (!currentAgent) return;
-  const q = document.getElementById("shell-search").value;
-  const kind = document.getElementById("shell-kind").value;
-  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  if (q) params.set("q", q);
-  if (kind) params.set("kind", kind);
-  const res = await api("/admin/shell/" + currentAgent + "/history/search?" + params.toString());
-  const data = await res.json();
-  const out = document.getElementById("shell-output");
-  out.textContent = (data.items || []).map(item => "[" + item.ts + " " + item.kind + "] " + item.data).join("");
-  out.scrollTop = out.scrollHeight;
-}
-
 function drawBarChart(canvasId, tooltipId, labels, values) {
   const canvas = document.getElementById(canvasId);
   const tooltip = document.getElementById(tooltipId);
@@ -1410,20 +1278,6 @@ async function copyText(text) {
   area.select();
   document.execCommand("copy");
   document.body.removeChild(area);
-}
-
-function startShellPoll() {
-  if (shellTimer) clearInterval(shellTimer);
-  shellTimer = setInterval(async () => {
-    if (!currentAgent) return;
-    const res = await api("/admin/shell/" + currentAgent + "/recv");
-    const data = await res.json();
-    if (data.output) {
-      const out = document.getElementById("shell-output");
-      out.textContent += data.output;
-      out.scrollTop = out.scrollHeight;
-    }
-  }, 1000);
 }
 
 async function loadApiEndpoints() {

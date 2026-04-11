@@ -90,9 +90,7 @@
         <input id="cfg-agent-id" placeholder="agent_id（可空）"/>
         <input id="cfg-server-url" placeholder="server_url"/>
         <input id="cfg-shared-key" placeholder="shared_key_b64"/>
-        <input id="cfg-shell-host" placeholder="shell_host"/>
-        <input id="cfg-shell-port" placeholder="shell_port" value="9001"/>
-        <div class="row">
+            <div class="row">
           <button id="btn-cfg-template">加载模板</button>
           <button id="btn-cfg-sign">签名预览</button>
           <button id="btn-cfg-download">下载配置</button>
@@ -138,7 +136,6 @@
     </div>
     <button id="btn-send-policy">下发策略</button>
     <div class="row">
-      <button id="btn-start-shell">开启远程Shell</button>
       <button id="btn-lock">锁定</button>
       <button id="btn-unlock">解锁</button>
     </div>
@@ -234,35 +231,6 @@
     <textarea id="sql-query" rows="3" placeholder="SQL 查询语句"></textarea>
     <button id="btn-run-query">查询</button>
     <pre id="query-result"></pre>
-  </section>
-  <section>
-    <h2>远程Shell伪终端</h2>
-    <div class="row">
-      <input id="shell-search" placeholder="检索关键字"/>
-      <select id="shell-kind">
-        <option value="">all</option>
-        <option value="input">input</option>
-        <option value="output">output</option>
-      </select>
-      <input id="shell-since-date" type="datetime-local"/>
-      <input id="shell-until-date" type="datetime-local"/>
-      <input id="shell-offset" placeholder="offset" value="0"/>
-      <input id="shell-limit" placeholder="limit" value="200"/>
-      <button id="btn-shell-search">查询</button>
-    </div>
-    <div class="row">
-      <button id="btn-shell-prev">上一页</button>
-      <button id="btn-shell-next">下一页</button>
-      <button id="btn-shell-history">加载历史</button>
-      <button id="btn-shell-clear">清空历史</button>
-      <button id="btn-shell-export-json">导出JSON</button>
-      <button id="btn-shell-export-csv">导出CSV</button>
-    </div>
-    <div class="row">
-      <input id="shell-input" placeholder="输入命令"/>
-      <button id="btn-shell-send">发送</button>
-    </div>
-    <pre id="shell-output"></pre>
   </section>
   <script src="/admin/ui/app.js"></script>
 </body>

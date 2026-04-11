@@ -13,7 +13,7 @@
 10. Log export/retention
 
 ## Explicitly deferred from V1
-- Remote shell
+- Remote shell (removed/hidden from V1-visible runtime, policy, config, and UI surfaces)
 
 ## Additional V1 security requirements
 - Agent systemd residency on Linux

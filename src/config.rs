@@ -12,8 +12,6 @@ use sha2::Sha256;
      pub agent_id: String,
      pub server_url: String,
      pub shared_key_b64: String,
-     pub shell_host: String,
-     pub shell_port: u16,
  }
  
  impl AgentConfig {
@@ -35,8 +33,6 @@ use sha2::Sha256;
              agent_id: Uuid::new_v4().to_string(),
              server_url: "https://127.0.0.1:8443".to_string(),
              shared_key_b64: base64::engine::general_purpose::STANDARD.encode([0u8; 32]),
-             shell_host: "127.0.0.1".to_string(),
-             shell_port: 9001,
          };
          let contents = serde_json::to_string_pretty(&cfg).context("serialize config")?;
          fs::create_dir_all(path.parent().unwrap()).ok();

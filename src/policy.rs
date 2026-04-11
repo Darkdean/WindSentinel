@@ -19,10 +19,8 @@ pub struct PolicyResponse {
     pub kill_pids: Vec<i32>,
     pub block_network_pids: Vec<i32>,
     pub block_all_network: bool,
-    pub start_shell: bool,
     pub lock: Option<LockRequest>,
     pub unlock: Option<UnlockRequest>,
-    pub session_key_b64: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
