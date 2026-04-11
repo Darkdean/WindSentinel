@@ -36,5 +36,12 @@
   - task acknowledgement lifecycle
   - helper-based stop/uninstall execution path
 
+## Admin UI progress
+- Admin UI now includes:
+  - control metadata loading
+  - offline authorization-code rotation
+  - stop / uninstall task issuance with MFA
+  - task list refresh for a selected agent
+
 ## Tracked design reference
 - See `docs/adr/ADR-0001-stop-uninstall-authorization.md` for the accepted V1 authorization design baseline.

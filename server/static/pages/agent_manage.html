@@ -31,4 +31,27 @@
       <button id="btn-tag-delete">删除标签</button>
     </div>
   </div>
+  <div class="grid">
+    <div>
+      <h3>客户端控制</h3>
+      <div class="row">
+        <button id="btn-control-meta-load">加载控制状态</button>
+        <button id="btn-control-task-refresh">刷新任务</button>
+      </div>
+      <input id="control-mfa-code" placeholder="输入已绑定MFA验证码"/>
+      <input id="control-reason" placeholder="操作原因（可选）"/>
+      <div class="row">
+        <button id="btn-control-code-rotate">轮换离线授权码</button>
+        <button id="btn-control-stop">下发停止任务</button>
+        <button id="btn-control-uninstall">下发卸载任务</button>
+      </div>
+      <pre id="control-offline-meta"></pre>
+      <pre id="control-offline-code"></pre>
+    </div>
+    <div>
+      <h3>客户端控制任务</h3>
+      <pre id="control-task-list"></pre>
+      <pre id="control-task-status"></pre>
+    </div>
+  </div>
 </section>

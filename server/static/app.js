@@ -452,6 +452,8 @@ async function loadAgents() {
     currentAgent = select.value;
     await loadHealth();
     await loadAgentProfile();
+    await loadClientControlState();
+    await loadClientControlTasks();
   } else {
     currentAgent = null;
   }
@@ -461,6 +463,8 @@ async function selectAgent() {
   currentAgent = document.getElementById("agent-list").value;
   await loadHealth();
   await loadAgentProfile();
+  await loadClientControlState();
+  await loadClientControlTasks();
 }
 
 async function loadHealth() {
@@ -760,6 +764,102 @@ async function unlockAgent() {
   const res = await api("/admin/policy/" + currentAgent + "/unlock", { method: "POST" });
   const data = await res.json();
   document.getElementById("policy-status").textContent = JSON.stringify(data, null, 2);
+}
+
+function getClientControlContext() {
+  const statusEl = document.getElementById("control-task-status");
+  const metaEl = document.getElementById("control-offline-meta");
+  const codeEl = document.getElementById("control-offline-code");
+  const taskEl = document.getElementById("control-task-list");
+  return { statusEl, metaEl, codeEl, taskEl };
+}
+
+function setClientControlStatus(value) {
+  const { statusEl } = getClientControlContext();
+  if (statusEl) statusEl.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+async function loadClientControlState() {
+  const { metaEl, codeEl } = getClientControlContext();
+  if (!currentAgent) {
+    if (metaEl) metaEl.textContent = "请先选择 Agent";
+    if (codeEl) codeEl.textContent = "";
+    return;
+  }
+  const res = await api("/admin/agents/" + currentAgent + "/control/offline-code");
+  if (!res.ok) {
+    const text = await readError(res);
+    if (metaEl) metaEl.textContent = text;
+    if (codeEl) codeEl.textContent = "";
+    return;
+  }
+  const data = await res.json();
+  if (metaEl) metaEl.textContent = JSON.stringify(data, null, 2);
+  if (codeEl) codeEl.textContent = "";
+}
+
+async function loadClientControlTasks() {
+  const { taskEl } = getClientControlContext();
+  if (!currentAgent) {
+    if (taskEl) taskEl.textContent = "请先选择 Agent";
+    return;
+  }
+  const res = await api("/admin/agents/" + currentAgent + "/control/tasks");
+  if (!res.ok) {
+    const text = await readError(res);
+    if (taskEl) taskEl.textContent = text;
+    return;
+  }
+  const data = await res.json();
+  if (taskEl) taskEl.textContent = JSON.stringify(data, null, 2);
+}
+
+async function rotateOfflineAuthorizationCode() {
+  const { codeEl } = getClientControlContext();
+  if (!currentAgent) {
+    setClientControlStatus("请先选择 Agent");
+    return;
+  }
+  const mfaCode = document.getElementById("control-mfa-code")?.value || "";
+  const reason = document.getElementById("control-reason")?.value || "";
+  const res = await api("/admin/agents/" + currentAgent + "/control/offline-code/rotate", {
+    method: "POST",
+    body: JSON.stringify({ mfa_code: mfaCode, reason: reason || null })
+  });
+  if (!res.ok) {
+    setClientControlStatus(await readError(res));
+    if (codeEl) codeEl.textContent = "";
+    return;
+  }
+  const data = await res.json();
+  if (codeEl) codeEl.textContent = JSON.stringify({
+    agent_id: data.agent_id,
+    offline_code: data.offline_code,
+    code_version: data.code_version,
+    correlation_id: data.correlation_id
+  }, null, 2);
+  setClientControlStatus({ status: "ok", action: "offline_code_rotated", correlation_id: data.correlation_id });
+  await loadClientControlState();
+}
+
+async function createClientControlTask(taskType) {
+  if (!currentAgent) {
+    setClientControlStatus("请先选择 Agent");
+    return;
+  }
+  const mfaCode = document.getElementById("control-mfa-code")?.value || "";
+  const reason = document.getElementById("control-reason")?.value || "";
+  const res = await api("/admin/agents/" + currentAgent + "/control/task", {
+    method: "POST",
+    body: JSON.stringify({ task_type: taskType, mfa_code: mfaCode, reason: reason || null })
+  });
+  if (!res.ok) {
+    setClientControlStatus(await readError(res));
+    return;
+  }
+  const data = await res.json();
+  setClientControlStatus(data);
+  await loadClientControlTasks();
 }
 
 async function runQuery() {

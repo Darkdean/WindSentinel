@@ -13,4 +13,4 @@ M0 baseline skeleton. Complete during admin/server implementation.
 ## Current known gaps
 - remote shell UI/routes/config surfaces are removed or hidden for V1
 - stop/uninstall admin workflow must enforce role permissions and MFA
-- stop/uninstall server APIs now exist, but admin UI entry points for those actions are not implemented yet in this milestone
+- stop/uninstall admin UI entry points now exist for loading control metadata, rotating offline codes, and issuing stop/uninstall tasks with MFA
