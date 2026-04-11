@@ -30,3 +30,6 @@
 
 ## Change policy
 Any code, architecture, deployment, configuration, or operational change must update all affected documents in the same change set.
+
+## ADRs
+- [ADR-0001: Stop / Uninstall Authorization Mechanism](./adr/ADR-0001-stop-uninstall-authorization.md)

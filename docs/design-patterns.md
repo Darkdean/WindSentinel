@@ -21,3 +21,10 @@
 - prefer incremental hardening over rewrite
 - isolate Linux-incompatible code paths early
 - keep packaging/deployment/documentation in lockstep with implementation
+
+## Chosen control authorization pattern
+- introduce dedicated `client_control` permission for destructive client behavior operations
+- allow `admin` and `operator`; deny `auditor`
+- require operation-time MFA for admin-issued stop/uninstall
+- use a dedicated control-task model for server-issued uninstall instead of overloading policy
+- use a helper-based local uninstall flow so the running agent can be removed safely
