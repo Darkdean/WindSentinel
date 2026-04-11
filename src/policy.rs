@@ -35,7 +35,10 @@ pub struct UnlockRequest {
 
 impl PolicyState {
     pub fn new() -> Self {
-        PolicyState { enabled_modules: HashSet::new(), last_policy: None }
+        PolicyState {
+            enabled_modules: HashSet::new(),
+            last_policy: None,
+        }
     }
 }
 
@@ -72,7 +75,11 @@ pub async fn fetch_and_apply(
     Ok(())
 }
 
-async fn apply_policy(config: &AgentConfig, policy: PolicyResponse, log_store: &tokio::sync::Mutex<LogStore>) -> Result<()> {
+async fn apply_policy(
+    config: &AgentConfig,
+    policy: PolicyResponse,
+    log_store: &tokio::sync::Mutex<LogStore>,
+) -> Result<()> {
     for pid in policy.kill_pids {
         unsafe {
             libc::kill(pid, libc::SIGKILL);

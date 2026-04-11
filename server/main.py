@@ -32,6 +32,7 @@ from config import DEBUG, LOG_LEVEL, LOG_FILE, LOG_REQUEST_BODY, MFA_ISSUER
 from models import (
     AgentProfilePayload,
     AgentTagsPayload,
+    AgentControlBootstrapPayload,
     AgentConfigPayload,
     AgentConfigTemplatePayload,
     AgentConfigTemplateImportPayload,
@@ -225,6 +226,41 @@ def sign_agent_config(config):
     }
 
 
+def ensure_agent_control_bootstrap(agent_id: str, created_by: str = "system"):
+    current = get_agent_offline_code(agent_id)
+    if current:
+        return {
+            "service_name": "windsentinel-agent",
+            "offline_code_hash": current["code_hash"],
+            "offline_code_salt": current["code_salt"],
+            "offline_code_version": current["code_version"],
+        }, None
+    offline_code = generate_offline_authorization_code()
+    code_salt = generate_code_salt()
+    code_hash = hash_offline_authorization_code(offline_code, code_salt)
+    upsert_agent_offline_code(agent_id, code_hash, code_salt, 1, "active", created_by)
+    return {
+        "service_name": "windsentinel-agent",
+        "offline_code_hash": code_hash,
+        "offline_code_salt": code_salt,
+        "offline_code_version": 1,
+    }, offline_code
+
+
+def prepare_agent_config(config: Dict[str, Any], created_by: str = "system"):
+    prepared = dict(config)
+    agent_id = prepared.get("agent_id") or str(uuid.uuid4())
+    prepared["agent_id"] = agent_id
+    bootstrap, offline_code = ensure_agent_control_bootstrap(agent_id, created_by)
+    control = dict(prepared.get("control") or {})
+    control.setdefault("service_name", bootstrap["service_name"])
+    control["offline_code_hash"] = bootstrap["offline_code_hash"]
+    control["offline_code_salt"] = bootstrap["offline_code_salt"]
+    control["offline_code_version"] = bootstrap["offline_code_version"]
+    prepared["control"] = control
+    return prepared, offline_code
+
+
 def default_agent_config(request: Request):
     host = request.headers.get("host", "127.0.0.1:8000")
     scheme = request.url.scheme
@@ -233,6 +269,7 @@ def default_agent_config(request: Request):
         "agent_id": str(uuid.uuid4()),
         "server_url": server_url,
         "shared_key_b64": base64.b64encode(os.urandom(32)).decode(),
+        "control": AgentControlBootstrapPayload().model_dump(),
     }
 
 
@@ -916,10 +953,10 @@ async def agent_config_templates_import(payload: Dict[str, Any], request: Reques
 @app.post("/admin/agent-config/sign")
 async def agent_config_sign(payload: AgentConfigPayload, request: Request, user=Depends(require_auth)):
     require_access(user, {"admin", "operator"}, "config_manage")
-    config = payload.model_dump()
-    if not config.get("agent_id"):
-        config["agent_id"] = str(uuid.uuid4())
+    config, offline_code = prepare_agent_config(payload.model_dump(), user["username"])
     signed = sign_agent_config(config)
+    if offline_code:
+        signed["offline_authorization_code"] = offline_code
     audit_action(user, "agent_config_sign", request)
     return signed
 
@@ -932,10 +969,10 @@ async def agent_config_download(
     user=Depends(require_auth),
 ):
     require_access(user, {"admin", "operator"}, "config_manage")
-    config = payload.model_dump()
-    if not config.get("agent_id"):
-        config["agent_id"] = str(uuid.uuid4())
+    config, offline_code = prepare_agent_config(payload.model_dump(), user["username"])
     signed = sign_agent_config(config)
+    if offline_code:
+        signed["offline_authorization_code"] = offline_code
     if format == "config":
         content = json.dumps(signed, indent=2).encode()
         audit_action(user, "agent_config_download", request, target="config")
@@ -1495,6 +1532,21 @@ async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, 
         "agent_id": agent_id,
         "expires_at": expires_at,
         "correlation_id": correlation_id,
+    }
+
+
+@app.get("/api/v1/control/offline-code-meta")
+async def offline_code_meta(agent_id: str):
+    data = get_agent_offline_code(agent_id)
+    if not data:
+        return {"control": None}
+    return {
+        "control": {
+            "service_name": "windsentinel-agent",
+            "offline_code_hash": data["code_hash"],
+            "offline_code_salt": data["code_salt"],
+            "offline_code_version": data["code_version"],
+        }
     }
 
 

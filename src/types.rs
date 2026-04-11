@@ -6,6 +6,7 @@ pub enum RecordKind {
     Network,
     Health,
     Policy,
+    Control,
     Transport,
     Shell,
     Lock,

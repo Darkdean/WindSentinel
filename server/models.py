@@ -81,10 +81,18 @@ class BatchPolicyPayload(BaseModel):
     policy: PolicyResponse
 
 
+class AgentControlBootstrapPayload(BaseModel):
+    service_name: str = "windsentinel-agent"
+    offline_code_hash: Optional[str] = None
+    offline_code_salt: Optional[str] = None
+    offline_code_version: Optional[int] = None
+
+
 class AgentConfigPayload(BaseModel):
     agent_id: Optional[str] = None
     server_url: str
     shared_key_b64: str
+    control: Optional[AgentControlBootstrapPayload] = None
 
 
 class AgentConfigTemplatePayload(BaseModel):

@@ -15,3 +15,8 @@ M0 baseline skeleton. Complete during server deployment implementation.
 ## Current known gaps
 - production Linux service model not yet finalized
 - Docker Compose deployment will be documented only after bare-metal deployment is complete
+- stop/uninstall server foundation is now present:
+  - offline authorization-code metadata + rotation APIs
+  - control-task create/list/ack delivery APIs
+  - RBAC + operation-time MFA gate for client control
+  - audit correlation for control-task lifecycle

@@ -3,6 +3,7 @@
 ## Agent (Rust)
 - `src/main.rs` — main loops and task scheduling
 - `src/config.rs` — config load and signature verification
+- `src/control.rs` — offline authorization state, control-task polling/ack, local control CLI, helper-based stop/uninstall flow
 - `src/log_store.rs` — local encrypted log store and upload
 - `src/policy.rs` — policy fetch/apply
 - `src/health.rs` — health collection and upload
