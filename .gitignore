@@ -22,21 +22,7 @@ server/windsentinel.db
 /tmp/
 
 # OMX runtime state
-.omx/*
-!.omx/context/
-!.omx/context/**
-!.omx/interviews/
-!.omx/interviews/**
-!.omx/plans/
-!.omx/plans/**
-!.omx/specs/
-!.omx/specs/**
-.omx/logs/
-.omx/state/
-.omx/metrics.json
-.omx/notepad.md
-.omx/project-memory.json
-.omx/tmux-hook.json
+.omx/
 
 # Editor / local tools
 .trae/
