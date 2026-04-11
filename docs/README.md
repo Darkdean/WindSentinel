@@ -8,6 +8,8 @@
   - Ubuntu 20 / 22 / 24
   - x86_64
   - ARM (`aarch64`)
+- Additional host runtime support:
+  - macOS (server/admin runtime support)
 
 ## Core product docs
 - [Client install and use](./client-install-use.md)

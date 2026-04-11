@@ -17,6 +17,7 @@
 - `server/storage.py` — PostgreSQL storage layer and schema helpers
 - `server/models.py` — request/response models
 - `server/config.py` — runtime config
+- `server/run_server.py` — cross-platform uvicorn launcher for Linux/macOS server runtime
 - `server/main.py` now also carries the stop/uninstall server-foundation endpoints for offline-code rotation, control-task creation, agent task delivery, and task acknowledgement
 - `server/static/pages/agent_manage.html` and `server/static/app.js` now expose the admin UI entry points for control metadata, code rotation, and stop/uninstall task issuance
 - `server/storage.py` now also stores offline authorization metadata and agent control task records

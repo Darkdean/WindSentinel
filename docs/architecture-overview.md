@@ -7,9 +7,10 @@
 - PostgreSQL persistence accessed through `server/storage.py`
 
 ## V1 architectural goals
+- server/admin runtime can also run on macOS for local operation and validation
 - Linux-first release hardening
 - systemd-managed agent residency
-- bare-metal server/admin deployment first
+- bare-metal server/admin deployment first (Linux release path)
 - Docker Compose artifact after bare-metal deployment is complete
 - remote shell excluded from V1 runtime, API, policy, and UI surfaces
 
