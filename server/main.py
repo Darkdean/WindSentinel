@@ -6,7 +6,6 @@ import os
 import hashlib
 import hmac
 import time
-import sqlite3
 import io
 import csv
 import difflib
@@ -74,6 +73,7 @@ from storage import (
     get_agent_offline_code,
     get_next_agent_control_task,
     get_policy,
+    get_user_mfa as get_user_mfa_secret,
     get_latest_health,
     get_api_endpoint_by_key_hash,
     get_api_endpoint,
@@ -1840,11 +1840,7 @@ def apply_policy_batch(agent_ids, payload):
 
 
 def get_user_mfa(username: str) -> str:
-    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), "windsentinel.db"))
-    cur = conn.cursor()
-    cur.execute("select mfa_secret from users where username = ?", (username,))
-    row = cur.fetchone()
-    conn.close()
-    if not row or not row[0]:
+    secret = get_user_mfa_secret(username)
+    if not secret:
         raise HTTPException(status_code=400, detail="mfa not bound")
-    return row[0]
+    return secret

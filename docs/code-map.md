@@ -14,7 +14,7 @@
 
 ## Server (Python)
 - `server/main.py` — API and admin logic
-- `server/storage.py` — SQLite storage layer
+- `server/storage.py` — PostgreSQL storage layer and schema helpers
 - `server/models.py` — request/response models
 - `server/config.py` — runtime config
 - `server/main.py` now also carries the stop/uninstall server-foundation endpoints for offline-code rotation, control-task creation, agent task delivery, and task acknowledgement

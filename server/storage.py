@@ -1,19 +1,71 @@
-import base64
 import json
 import os
-import sqlite3
+import re
 import time
 import uuid
 
 from passlib.hash import bcrypt
+import psycopg
+from psycopg.rows import dict_row
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "windsentinel.db")
+from config import build_postgres_dsn
+
+DB_DSN = build_postgres_dsn()
+
+
+def _normalize_query(query: str) -> str:
+    normalized = query
+    insert_ignore = re.compile(r"insert\s+or\s+ignore\s+into", re.IGNORECASE)
+    if insert_ignore.search(normalized):
+        normalized = insert_ignore.sub("insert into", normalized)
+        if "on conflict" not in normalized.lower():
+            normalized = normalized.rstrip() + " on conflict do nothing"
+    return normalized.replace("?", "%s")
+
+
+class CompatCursor:
+    def __init__(self, inner):
+        self._inner = inner
+        self.lastrowid = None
+
+    def execute(self, query, params=None):
+        sql = _normalize_query(query)
+        self._inner.execute(sql, params or ())
+        return self
+
+    def fetchone(self):
+        return self._inner.fetchone()
+
+    def fetchall(self):
+        return self._inner.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class CompatConnection:
+    def __init__(self, inner):
+        self._inner = inner
+
+    def cursor(self):
+        return CompatCursor(self._inner.cursor())
+
+    def commit(self):
+        return self._inner.commit()
+
+    def rollback(self):
+        return self._inner.rollback()
+
+    def close(self):
+        return self._inner.close()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
 
 
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row)
+    return CompatConnection(conn)
 
 
 def init_db():
@@ -33,7 +85,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists health_reports (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             agent_id text not null,
             payload text not null,
             ts integer not null
@@ -43,7 +95,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists client_logs (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             agent_id text not null,
             record text not null,
             ts integer not null
@@ -62,7 +114,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists audit_logs (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             username text not null,
             action text not null,
             ts integer not null,
@@ -84,7 +136,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists agent_groups (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             name text unique not null,
             description text,
             created_at integer not null
@@ -105,7 +157,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists agent_tags (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             name text unique not null,
             created_at integer not null
         )
@@ -132,7 +184,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists agent_config_template_versions (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             name text not null,
             config text not null,
             created_at integer not null
@@ -142,7 +194,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists api_endpoints (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             name text not null,
             alias text,
             role text not null,
@@ -157,7 +209,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists log_exports (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             target_type text not null,
             config text not null,
             enabled integer not null,
@@ -214,7 +266,7 @@ def init_db():
     cur.execute(
         """
         create table if not exists agent_control_tasks (
-            id integer primary key autoincrement,
+            id bigserial primary key,
             agent_id text not null,
             task_type text not null,
             status text not null,
@@ -244,73 +296,43 @@ def init_db():
 
 def ensure_audit_columns(conn):
     cur = conn.cursor()
-    cur.execute("pragma table_info(audit_logs)")
-    cols = {row[1] for row in cur.fetchall()}
-    if "ip" not in cols:
-        cur.execute("alter table audit_logs add column ip text")
-    if "target" not in cols:
-        cur.execute("alter table audit_logs add column target text")
-    if "result" not in cols:
-        cur.execute("alter table audit_logs add column result text")
-    if "via_api" not in cols:
-        cur.execute("alter table audit_logs add column via_api integer not null default 0")
-    if "user_agent" not in cols:
-        cur.execute("alter table audit_logs add column user_agent text")
-    if "method" not in cols:
-        cur.execute("alter table audit_logs add column method text")
-    if "path" not in cols:
-        cur.execute("alter table audit_logs add column path text")
-    if "referer" not in cols:
-        cur.execute("alter table audit_logs add column referer text")
-    if "query" not in cols:
-        cur.execute("alter table audit_logs add column query text")
-    if "role" not in cols:
-        cur.execute("alter table audit_logs add column role text")
-    if "auth_type" not in cols:
-        cur.execute("alter table audit_logs add column auth_type text")
-    if "api_endpoint_id" not in cols:
-        cur.execute("alter table audit_logs add column api_endpoint_id integer")
-    if "correlation_id" not in cols:
-        cur.execute("alter table audit_logs add column correlation_id text")
+    cur.execute("alter table audit_logs add column if not exists ip text")
+    cur.execute("alter table audit_logs add column if not exists target text")
+    cur.execute("alter table audit_logs add column if not exists result text")
+    cur.execute("alter table audit_logs add column if not exists via_api integer not null default 0")
+    cur.execute("alter table audit_logs add column if not exists user_agent text")
+    cur.execute("alter table audit_logs add column if not exists method text")
+    cur.execute("alter table audit_logs add column if not exists path text")
+    cur.execute("alter table audit_logs add column if not exists referer text")
+    cur.execute("alter table audit_logs add column if not exists query text")
+    cur.execute("alter table audit_logs add column if not exists role text")
+    cur.execute("alter table audit_logs add column if not exists auth_type text")
+    cur.execute("alter table audit_logs add column if not exists api_endpoint_id integer")
+    cur.execute("alter table audit_logs add column if not exists correlation_id text")
     conn.commit()
 
 
 def ensure_log_export_columns(conn):
     cur = conn.cursor()
-    cur.execute("pragma table_info(log_exports)")
-    cols = {row[1] for row in cur.fetchall()}
-    if "log_types" not in cols:
-        cur.execute("alter table log_exports add column log_types text")
+    cur.execute("alter table log_exports add column if not exists log_types text")
     conn.commit()
 
 
 def ensure_login_blacklist_columns(conn):
     cur = conn.cursor()
-    cur.execute("pragma table_info(login_blacklist)")
-    cols = {row[1] for row in cur.fetchall()}
-    if "ip_list" not in cols:
-        cur.execute("alter table login_blacklist add column ip_list text")
-    if "device_types" not in cols:
-        cur.execute("alter table login_blacklist add column device_types text")
-    if "ua_keywords" not in cols:
-        cur.execute("alter table login_blacklist add column ua_keywords text")
-    if "browser_list" not in cols:
-        cur.execute("alter table login_blacklist add column browser_list text")
-    if "os_list" not in cols:
-        cur.execute("alter table login_blacklist add column os_list text")
-    if "updated_at" not in cols:
-        cur.execute("alter table login_blacklist add column updated_at integer not null default 0")
+    cur.execute("alter table login_blacklist add column if not exists ip_list text")
+    cur.execute("alter table login_blacklist add column if not exists device_types text")
+    cur.execute("alter table login_blacklist add column if not exists ua_keywords text")
+    cur.execute("alter table login_blacklist add column if not exists browser_list text")
+    cur.execute("alter table login_blacklist add column if not exists os_list text")
+    cur.execute("alter table login_blacklist add column if not exists updated_at integer not null default 0")
     conn.commit()
 
 
 def ensure_login_whitelist_columns(conn):
     cur = conn.cursor()
-    cur.execute("pragma table_info(login_whitelist)")
-    cols = {row[1] for row in cur.fetchall()}
-    if "ip_list" not in cols:
-        cur.execute("alter table login_whitelist add column ip_list text")
-    if "updated_at" not in cols:
-        cur.execute("alter table login_whitelist add column updated_at integer not null default 0")
+    cur.execute("alter table login_whitelist add column if not exists ip_list text")
+    cur.execute("alter table login_whitelist add column if not exists updated_at integer not null default 0")
     conn.commit()
 
 
@@ -355,6 +377,17 @@ def set_user_mfa(username, secret):
     cur.execute("update users set mfa_secret = ? where username = ?", (secret, username))
     conn.commit()
     conn.close()
+
+
+def get_user_mfa(username):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("select mfa_secret from users where username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    if not row or not row["mfa_secret"]:
+        return None
+    return row["mfa_secret"]
 
 
 def add_user(username, password, role):
@@ -540,7 +573,7 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
         left join agent_profiles ap on ap.agent_id = a.agent_id
         left join agent_groups ag on ag.id = ap.group_id
         left join (
-            select m.agent_id, group_concat(t.name, ",") as tags, group_concat(t.id, ",") as tag_ids
+            select m.agent_id, string_agg(t.name, ',' order by t.name) as tags, string_agg(t.id::text, ',' order by t.id) as tag_ids
             from agent_tag_map m join agent_tags t on t.id = m.tag_id
             group by m.agent_id
         ) tags on tags.agent_id = a.agent_id
@@ -606,7 +639,7 @@ def get_agent_detail(agent_id):
         left join agent_profiles ap on ap.agent_id = a.agent_id
         left join agent_groups ag on ag.id = ap.group_id
         left join (
-            select m.agent_id, group_concat(t.name, ",") as tags
+            select m.agent_id, string_agg(t.name, ',' order by t.name) as tags
             from agent_tag_map m join agent_tags t on t.id = m.tag_id
             group by m.agent_id
         ) tags on tags.agent_id = a.agent_id
@@ -657,7 +690,7 @@ def create_group(name, description=None):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "insert or ignore into agent_groups (name, description, created_at) values (?, ?, ?)",
+        "insert into agent_groups (name, description, created_at) values (?, ?, ?) on conflict do nothing",
         (name, description, int(time.time())),
     )
     cur.execute("select id from agent_groups where name = ?", (name,))
@@ -689,7 +722,7 @@ def create_tag(name):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "insert or ignore into agent_tags (name, created_at) values (?, ?)",
+        "insert into agent_tags (name, created_at) values (?, ?) on conflict do nothing",
         (name, int(time.time())),
     )
     cur.execute("select id from agent_tags where name = ?", (name,))
@@ -715,14 +748,14 @@ def set_agent_tags(agent_id, tags):
     cur.execute("delete from agent_tag_map where agent_id = ?", (agent_id,))
     for tag in cleaned:
         cur.execute(
-            "insert or ignore into agent_tags (name, created_at) values (?, ?)",
+            "insert into agent_tags (name, created_at) values (?, ?) on conflict do nothing",
             (tag, int(time.time())),
         )
         cur.execute("select id from agent_tags where name = ?", (tag,))
         row = cur.fetchone()
         if row:
             cur.execute(
-                "insert or ignore into agent_tag_map (agent_id, tag_id) values (?, ?)",
+                "insert into agent_tag_map (agent_id, tag_id) values (?, ?) on conflict do nothing",
                 (agent_id, row["id"]),
             )
     conn.commit()
@@ -921,9 +954,9 @@ def list_audit_stats(bucket="day", username=None, action=None, since=None, until
         params.append(int(until))
     where = f"where {' and '.join(clauses)}" if clauses else ""
     if bucket == "hour":
-        group_expr = "strftime('%Y-%m-%d %H:00', ts, 'unixepoch')"
+        group_expr = "to_char(date_trunc('hour', to_timestamp(ts)), 'YYYY-MM-DD HH24:00')"
     else:
-        group_expr = "strftime('%Y-%m-%d', ts, 'unixepoch')"
+        group_expr = "to_char(date_trunc('day', to_timestamp(ts)), 'YYYY-MM-DD')"
     cur.execute(
         f"select {group_expr} as bucket, count(*) as count from audit_logs {where} group by bucket order by bucket",
         params,
@@ -993,7 +1026,7 @@ def create_agent_control_task(
         insert into agent_control_tasks (
             agent_id, task_type, status, payload, created_at, created_by, created_role,
             mfa_verified_at, expires_at, audit_correlation_id
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id
         """,
         (
             agent_id,
@@ -1008,7 +1041,8 @@ def create_agent_control_task(
             audit_correlation_id,
         ),
     )
-    task_id = cur.lastrowid
+    row = cur.fetchone()
+    task_id = row["id"]
     conn.commit()
     conn.close()
     return task_id
@@ -1124,10 +1158,11 @@ def create_api_endpoint(name, alias, role, functions, key_hash, created_by):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "insert into api_endpoints (name, alias, role, functions, key_hash, created_at, created_by) values (?, ?, ?, ?, ?, ?, ?)",
+        "insert into api_endpoints (name, alias, role, functions, key_hash, created_at, created_by) values (?, ?, ?, ?, ?, ?, ?) returning id",
         (name, alias, role, json.dumps(functions), key_hash, int(time.time()), created_by),
     )
-    endpoint_id = cur.lastrowid
+    row = cur.fetchone()
+    endpoint_id = row["id"]
     conn.commit()
     conn.close()
     return endpoint_id
@@ -1212,10 +1247,11 @@ def create_log_export(target_type, config, enabled=True, log_types=None):
     cur = conn.cursor()
     stored_types = json.dumps(log_types or [])
     cur.execute(
-        "insert into log_exports (target_type, config, enabled, created_at, log_types) values (?, ?, ?, ?, ?)",
+        "insert into log_exports (target_type, config, enabled, created_at, log_types) values (?, ?, ?, ?, ?) returning id",
         (target_type, json.dumps(config), 1 if enabled else 0, int(time.time()), stored_types),
     )
-    export_id = cur.lastrowid
+    row = cur.fetchone()
+    export_id = row["id"]
     conn.commit()
     conn.close()
     return export_id

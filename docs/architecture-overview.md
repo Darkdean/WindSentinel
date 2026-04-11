@@ -4,7 +4,7 @@
 - Rust agent in `src/`
 - Python FastAPI server in `server/`
 - static admin UI in `server/static/`
-- SQLite persistence in `server/`
+- PostgreSQL persistence accessed through `server/storage.py`
 
 ## V1 architectural goals
 - Linux-first release hardening

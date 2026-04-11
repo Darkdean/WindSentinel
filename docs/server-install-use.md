@@ -7,7 +7,7 @@ M0 baseline skeleton. Complete during server deployment implementation.
 - supported Linux distributions
 - Python/runtime dependency installation
 - configuration and secret environment variables
-- database file path and backup notes
+- PostgreSQL connection, credentials, and backup notes
 - service startup and process supervision
 - upgrade and rollback steps
 - troubleshooting and health checks
@@ -15,6 +15,7 @@ M0 baseline skeleton. Complete during server deployment implementation.
 ## Current known gaps
 - production Linux service model not yet finalized
 - Docker Compose deployment will be documented only after bare-metal deployment is complete
+- PostgreSQL deployment/runbook is not yet documented end-to-end
 - stop/uninstall server foundation is now present:
   - offline authorization-code metadata + rotation APIs
   - control-task create/list/ack delivery APIs
