@@ -197,6 +197,42 @@ def init_db():
         )
         """
     )
+    cur.execute(
+        """
+        create table if not exists agent_offline_codes (
+            agent_id text primary key,
+            code_hash text not null,
+            code_salt text not null,
+            code_version integer not null,
+            status text not null,
+            created_at integer not null,
+            rotated_at integer,
+            rotated_by text
+        )
+        """
+    )
+    cur.execute(
+        """
+        create table if not exists agent_control_tasks (
+            id integer primary key autoincrement,
+            agent_id text not null,
+            task_type text not null,
+            status text not null,
+            payload text not null,
+            created_at integer not null,
+            created_by text not null,
+            created_role text not null,
+            mfa_verified_at integer,
+            expires_at integer,
+            delivered_at integer,
+            started_at integer,
+            finished_at integer,
+            result_code text,
+            result_message text,
+            audit_correlation_id text
+        )
+        """
+    )
     conn.commit()
     ensure_audit_columns(conn)
     ensure_log_export_columns(conn)
@@ -234,6 +270,8 @@ def ensure_audit_columns(conn):
         cur.execute("alter table audit_logs add column auth_type text")
     if "api_endpoint_id" not in cols:
         cur.execute("alter table audit_logs add column api_endpoint_id integer")
+    if "correlation_id" not in cols:
+        cur.execute("alter table audit_logs add column correlation_id text")
     conn.commit()
 
 
@@ -738,12 +776,13 @@ def add_audit(
     role=None,
     auth_type=None,
     api_endpoint_id=None,
+    correlation_id=None,
 ):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "insert into audit_logs (username, action, ts, ip, target, result, via_api, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (username, action, int(time.time()), ip, target, result, 1 if via_api else 0, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id),
+        "insert into audit_logs (username, action, ts, ip, target, result, via_api, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id, correlation_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (username, action, int(time.time()), ip, target, result, 1 if via_api else 0, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id, correlation_id),
     )
     conn.commit()
     conn.close()
@@ -769,7 +808,7 @@ def list_audits(limit=200, username=None, action=None, since=None, until=None):
     where = f"where {' and '.join(clauses)}" if clauses else ""
     params.append(limit)
     cur.execute(
-        f"select username, action, ts, ip, target, result, via_api, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id from audit_logs {where} order by ts desc limit ?",
+        f"select username, action, ts, ip, target, result, via_api, user_agent, method, path, referer, query, role, auth_type, api_endpoint_id, correlation_id from audit_logs {where} order by ts desc limit ?",
         params,
     )
     rows = cur.fetchall()
@@ -900,6 +939,185 @@ def list_audit_stats(bucket="day", username=None, action=None, since=None, until
         "series": [dict(row) for row in rows],
         "actions": [dict(row) for row in actions],
     }
+
+
+def upsert_agent_offline_code(agent_id, code_hash, code_salt, code_version, status, rotated_by):
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        insert into agent_offline_codes (agent_id, code_hash, code_salt, code_version, status, created_at, rotated_at, rotated_by)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict(agent_id) do update set
+            code_hash=excluded.code_hash,
+            code_salt=excluded.code_salt,
+            code_version=excluded.code_version,
+            status=excluded.status,
+            rotated_at=excluded.rotated_at,
+            rotated_by=excluded.rotated_by
+        """,
+        (agent_id, code_hash, code_salt, int(code_version), status, now, now, rotated_by),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_agent_offline_code(agent_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "select agent_id, code_hash, code_salt, code_version, status, created_at, rotated_at, rotated_by from agent_offline_codes where agent_id = ?",
+        (agent_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_agent_control_task(
+    agent_id,
+    task_type,
+    payload,
+    created_by,
+    created_role,
+    mfa_verified_at=None,
+    expires_at=None,
+    audit_correlation_id=None,
+):
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        insert into agent_control_tasks (
+            agent_id, task_type, status, payload, created_at, created_by, created_role,
+            mfa_verified_at, expires_at, audit_correlation_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            agent_id,
+            task_type,
+            "queued",
+            json.dumps(payload),
+            now,
+            created_by,
+            created_role,
+            mfa_verified_at,
+            expires_at,
+            audit_correlation_id,
+        ),
+    )
+    task_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+
+def list_agent_control_tasks(agent_id, limit=50):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        select id, agent_id, task_type, status, payload, created_at, created_by, created_role,
+               mfa_verified_at, expires_at, delivered_at, started_at, finished_at,
+               result_code, result_message, audit_correlation_id
+        from agent_control_tasks
+        where agent_id = ?
+        order by id desc
+        limit ?
+        """,
+        (agent_id, int(limit)),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    items = []
+    for row in rows:
+        data = dict(row)
+        data["payload"] = json.loads(data["payload"])
+        items.append(data)
+    return items
+
+
+def get_next_agent_control_task(agent_id):
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        select id, agent_id, task_type, status, payload, created_at, created_by, created_role,
+               mfa_verified_at, expires_at, delivered_at, started_at, finished_at,
+               result_code, result_message, audit_correlation_id
+        from agent_control_tasks
+        where agent_id = ?
+          and status = 'queued'
+          and (expires_at is null or expires_at >= ?)
+        order by id asc
+        limit 1
+        """,
+        (agent_id, now),
+    )
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return None
+    task_id = row["id"]
+    cur.execute(
+        "update agent_control_tasks set status = 'delivered', delivered_at = ? where id = ? and status = 'queued'",
+        (now, task_id),
+    )
+    conn.commit()
+    cur.execute(
+        """
+        select id, agent_id, task_type, status, payload, created_at, created_by, created_role,
+               mfa_verified_at, expires_at, delivered_at, started_at, finished_at,
+               result_code, result_message, audit_correlation_id
+        from agent_control_tasks
+        where id = ?
+        """,
+        (task_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    data = dict(row)
+    data["payload"] = json.loads(data["payload"])
+    return data
+
+
+def update_agent_control_task_status(task_id, status, result_code=None, result_message=None):
+    now = int(time.time())
+    updates = ["status = ?", "result_code = ?", "result_message = ?"]
+    params = [status, result_code, result_message]
+    if status == "acknowledged":
+        updates.append("started_at = coalesce(started_at, ?)")
+        params.append(now)
+    if status in {"completed", "failed", "expired", "cancelled"}:
+        updates.append("finished_at = ?")
+        params.append(now)
+    params.append(int(task_id))
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"update agent_control_tasks set {', '.join(updates)} where id = ?", params)
+    conn.commit()
+    cur.execute(
+        """
+        select id, agent_id, task_type, status, payload, created_at, created_by, created_role,
+               mfa_verified_at, expires_at, delivered_at, started_at, finished_at,
+               result_code, result_message, audit_correlation_id
+        from agent_control_tasks
+        where id = ?
+        """,
+        (int(task_id),),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    data = dict(row)
+    data["payload"] = json.loads(data["payload"])
+    return data
 
 
 def create_api_endpoint(name, alias, role, functions, key_hash, created_by):

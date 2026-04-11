@@ -13,6 +13,7 @@ import difflib
 import zipfile
 import uuid
 import logging
+import secrets
 import traceback
 from typing import Any, Dict, Optional
 
@@ -34,15 +35,18 @@ from models import (
     AgentConfigPayload,
     AgentConfigTemplatePayload,
     AgentConfigTemplateImportPayload,
+    AgentControlTaskAckPayload,
     ApiEndpointPayload,
     BatchPolicyPayload,
     ChangePasswordRequest,
+    ClientControlTaskRequest,
     CreateUserRequest,
     GroupPayload,
     HealthPayload,
     LogPayload,
     LoginRequest,
     MfaVerifyRequest,
+    OfflineCodeRotateRequest,
     PolicyResponse,
     RulePayload,
     SqlQuery,
@@ -57,6 +61,7 @@ from storage import (
     add_user,
     create_api_endpoint,
     create_group,
+    create_agent_control_task,
     create_tag,
     delete_user,
     delete_group,
@@ -65,12 +70,15 @@ from storage import (
     generate_token,
     get_logs_sql,
     get_agent_detail,
+    get_agent_offline_code,
+    get_next_agent_control_task,
     get_policy,
     get_latest_health,
     get_api_endpoint_by_key_hash,
     get_api_endpoint,
     init_db,
     list_agents,
+    list_agent_control_tasks,
     list_audits,
     list_api_endpoints,
     list_groups,
@@ -109,6 +117,8 @@ from storage import (
     set_user_password,
     store_health,
     store_log,
+    update_agent_control_task_status,
+    upsert_agent_offline_code,
     upsert_agent_profile,
     update_api_endpoint_last_used,
     verify_user,
@@ -154,9 +164,10 @@ ROLE_PERMISSIONS = {
         "log_retention_manage",
         "login_blacklist_manage",
         "login_whitelist_manage",
+        "client_control",
     },
     "auditor": {"agents_view", "audits_view", "logs_query", "api_keys_manage"},
-    "operator": {"agents_view", "agents_manage", "policy_manage", "config_manage", "rules_manage", "api_keys_manage", "login_blacklist_manage", "login_whitelist_manage"},
+    "operator": {"agents_view", "agents_manage", "policy_manage", "config_manage", "rules_manage", "api_keys_manage", "login_blacklist_manage", "login_whitelist_manage", "client_control"},
 }
 
 PAGE_PERMISSIONS = {
@@ -473,6 +484,91 @@ def audit_action(user, action, request: Optional[Request], target=None, result="
         asyncio.create_task(dispatch_log_exports(None, payload, "audit"))
     except Exception:
         pass
+
+
+def audit_client_control(user, action, request: Optional[Request], agent_id: str, result: str, correlation_id: Optional[str] = None):
+    auth_value = "api_key" if user.get("via_api") else "token"
+    add_audit(
+        user["username"],
+        action,
+        ip=get_client_ip(request) if request else None,
+        target=agent_id,
+        result=result,
+        via_api=bool(user.get("via_api")),
+        user_agent=get_user_agent(request),
+        method=get_request_method(request),
+        path=get_request_path(request),
+        referer=get_request_referer(request),
+        query=get_request_query(request),
+        role=user.get("role"),
+        auth_type=auth_value,
+        api_endpoint_id=user.get("api_endpoint_id"),
+        correlation_id=correlation_id,
+    )
+    payload = {
+        "username": user["username"],
+        "action": action,
+        "target": agent_id,
+        "result": result,
+        "ip": get_client_ip(request) if request else None,
+        "via_api": bool(user.get("via_api")),
+        "user_agent": get_user_agent(request),
+        "method": get_request_method(request),
+        "path": get_request_path(request),
+        "referer": get_request_referer(request),
+        "query": get_request_query(request),
+        "role": user.get("role"),
+        "auth_type": auth_value,
+        "api_endpoint_id": user.get("api_endpoint_id"),
+        "correlation_id": correlation_id,
+        "ts": int(time.time()),
+    }
+    try:
+        asyncio.create_task(dispatch_log_exports(None, payload, "audit"))
+    except Exception:
+        pass
+
+
+def require_client_control_permission(user, request: Request, agent_id: str, correlation_id: Optional[str] = None):
+    if user.get("via_api"):
+        audit_client_control(user, "client_control_permission_denied", request, agent_id, "api_key_not_allowed", correlation_id)
+        raise HTTPException(status_code=403, detail="无权限")
+    allowed_roles = {"admin", "operator"}
+    if user.get("role") not in allowed_roles:
+        audit_client_control(user, "client_control_permission_denied", request, agent_id, "role_denied", correlation_id)
+        raise HTTPException(status_code=403, detail="无权限")
+    role_perms = ROLE_PERMISSIONS.get(user.get("role"), set())
+    if "client_control" not in role_perms:
+        audit_client_control(user, "client_control_permission_denied", request, agent_id, "feature_denied", correlation_id)
+        raise HTTPException(status_code=403, detail="无权限")
+
+
+def require_client_control_mfa(user, request: Request, agent_id: str, mfa_code: str, correlation_id: Optional[str] = None):
+    try:
+        secret = get_user_mfa(user["username"])
+    except HTTPException:
+        audit_client_control(user, "client_control_mfa_missing", request, agent_id, "mfa_not_bound", correlation_id)
+        raise HTTPException(status_code=400, detail="请先绑定MFA")
+    if not mfa_code or not pyotp.TOTP(secret).verify(mfa_code):
+        audit_client_control(user, "client_control_mfa_invalid", request, agent_id, "invalid_mfa", correlation_id)
+        raise HTTPException(status_code=401, detail="验证码错误")
+    return int(time.time())
+
+
+def generate_offline_authorization_code():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(6)]
+    return "WS-" + "-".join(groups)
+
+
+def generate_code_salt():
+    return base64.b64encode(os.urandom(16)).decode()
+
+
+def hash_offline_authorization_code(code: str, salt: str) -> str:
+    material = (salt + ":" + code).encode()
+    digest = hashlib.pbkdf2_hmac("sha256", material, salt.encode(), 200000)
+    return base64.b64encode(digest).decode()
 
 
 def audit_login_attempt(username: str, request: Request, result: str, auth_type: str):
@@ -1316,6 +1412,130 @@ async def latest_health(agent_id: str, user=Depends(require_auth)):
     return data
 
 
+@app.get("/admin/agents/{agent_id}/control/offline-code")
+async def get_agent_offline_code_meta(agent_id: str, request: Request, user=Depends(require_auth)):
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+    data = get_agent_offline_code(agent_id)
+    if not data:
+        audit_client_control(user, "offline_auth_code_meta_read", request, agent_id, "not_found", correlation_id)
+        raise HTTPException(status_code=404, detail="no offline authorization code")
+    audit_client_control(user, "offline_auth_code_meta_read", request, agent_id, "ok", correlation_id)
+    return {
+        "agent_id": data["agent_id"],
+        "code_version": data["code_version"],
+        "status": data["status"],
+        "created_at": data["created_at"],
+        "rotated_at": data["rotated_at"],
+        "rotated_by": data["rotated_by"],
+        "correlation_id": correlation_id,
+    }
+
+
+@app.post("/admin/agents/{agent_id}/control/offline-code/rotate")
+async def rotate_agent_offline_code(agent_id: str, payload: OfflineCodeRotateRequest, request: Request, user=Depends(require_auth)):
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+    require_client_control_mfa(user, request, agent_id, payload.mfa_code, correlation_id)
+    current = get_agent_offline_code(agent_id)
+    next_version = (int(current["code_version"]) + 1) if current else 1
+    offline_code = generate_offline_authorization_code()
+    code_salt = generate_code_salt()
+    code_hash = hash_offline_authorization_code(offline_code, code_salt)
+    upsert_agent_offline_code(agent_id, code_hash, code_salt, next_version, "active", user["username"])
+    audit_client_control(user, "offline_auth_code_rotated", request, agent_id, "ok", correlation_id)
+    return {
+        "agent_id": agent_id,
+        "offline_code": offline_code,
+        "code_version": next_version,
+        "reason": payload.reason,
+        "correlation_id": correlation_id,
+    }
+
+
+@app.get("/admin/agents/{agent_id}/control/tasks")
+async def list_control_tasks(agent_id: str, request: Request, limit: int = 50, user=Depends(require_auth)):
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+    items = list_agent_control_tasks(agent_id, limit)
+    audit_client_control(user, "client_control_task_list", request, agent_id, "ok", correlation_id)
+    return {"items": items, "correlation_id": correlation_id}
+
+
+@app.post("/admin/agents/{agent_id}/control/task")
+async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, request: Request, user=Depends(require_auth)):
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+    require_client_control_mfa(user, request, agent_id, payload.mfa_code, correlation_id)
+    task_type = (payload.task_type or "").strip().lower()
+    if task_type not in {"stop", "uninstall"}:
+        raise HTTPException(status_code=400, detail="invalid task_type")
+    expires_in_seconds = max(60, min(int(payload.expires_in_seconds or 86400), 7 * 86400))
+    expires_at = int(time.time()) + expires_in_seconds
+    task_payload = {
+        "reason": payload.reason,
+        "requested_by": user["username"],
+        "requested_role": user["role"],
+    }
+    task_id = create_agent_control_task(
+        agent_id,
+        task_type,
+        task_payload,
+        user["username"],
+        user["role"],
+        mfa_verified_at=int(time.time()),
+        expires_at=expires_at,
+        audit_correlation_id=correlation_id,
+    )
+    audit_client_control(user, f"client_{task_type}_task_created", request, agent_id, "ok", correlation_id)
+    return {
+        "status": "ok",
+        "task_id": task_id,
+        "task_type": task_type,
+        "agent_id": agent_id,
+        "expires_at": expires_at,
+        "correlation_id": correlation_id,
+    }
+
+
+@app.get("/api/v1/control-tasks/next")
+async def next_control_task(agent_id: str):
+    task = get_next_agent_control_task(agent_id)
+    if not task:
+        return {"task": None}
+    add_audit(
+        task["created_by"],
+        f"client_{task['task_type']}_task_delivered",
+        target=agent_id,
+        result="delivered",
+        role=task["created_role"],
+        auth_type="token",
+        correlation_id=task.get("audit_correlation_id"),
+    )
+    return {"task": task}
+
+
+@app.post("/api/v1/control-tasks/{task_id}/ack")
+async def ack_control_task(task_id: int, payload: AgentControlTaskAckPayload):
+    status = (payload.status or "").strip().lower()
+    if status not in {"acknowledged", "running", "completed", "failed", "expired", "cancelled"}:
+        raise HTTPException(status_code=400, detail="invalid status")
+    task = update_agent_control_task_status(task_id, status, payload.result_code, payload.result_message)
+    if not task:
+        raise HTTPException(status_code=404, detail="no task")
+    correlation_id = task.get("audit_correlation_id")
+    add_audit(
+        task["created_by"],
+        f"client_{task['task_type']}_{status}",
+        target=task["agent_id"],
+        result=payload.result_code or status,
+        role=task["created_role"],
+        auth_type="token",
+        correlation_id=correlation_id,
+    )
+    return {"status": "ok", "task": task}
+
+
 @app.post("/admin/policy/{agent_id}")
 async def set_policy_admin(agent_id: str, payload: PolicyResponse, request: Request, user=Depends(require_auth)):
     require_access(user, {"admin", "operator"}, "policy_manage")
@@ -1576,5 +1796,3 @@ def get_user_mfa(username: str) -> str:
     if not row or not row[0]:
         raise HTTPException(status_code=400, detail="mfa not bound")
     return row[0]
-
-

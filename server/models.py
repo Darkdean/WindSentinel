@@ -97,6 +97,24 @@ class AgentConfigTemplateImportPayload(BaseModel):
     config: AgentConfigPayload
 
 
+class ClientControlTaskRequest(BaseModel):
+    task_type: str
+    mfa_code: str
+    reason: Optional[str] = None
+    expires_in_seconds: int = 86400
+
+
+class OfflineCodeRotateRequest(BaseModel):
+    mfa_code: str
+    reason: Optional[str] = None
+
+
+class AgentControlTaskAckPayload(BaseModel):
+    status: str
+    result_code: Optional[str] = None
+    result_message: Optional[str] = None
+
+
 class ApiEndpointPayload(BaseModel):
     name: str
     role: str

@@ -21,5 +21,12 @@
 - server-issued uninstall task with self-uninstall and cleanup
 - RBAC + MFA + audit coverage for admin-issued stop/uninstall actions
 
+## Server foundation progress
+- Server-side foundation for stop/uninstall now includes:
+  - offline authorization-code metadata + rotation path
+  - control-task table and API contract for `stop` / `uninstall`
+  - RBAC + operation-time MFA gate for admin-issued client control
+  - audit correlation for control-task lifecycle events
+
 ## Tracked design reference
 - See `docs/adr/ADR-0001-stop-uninstall-authorization.md` for the accepted V1 authorization design baseline.

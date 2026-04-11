@@ -16,6 +16,8 @@
 - `server/storage.py` — SQLite storage layer
 - `server/models.py` — request/response models
 - `server/config.py` — runtime config
+- `server/main.py` now also carries the stop/uninstall server-foundation endpoints for offline-code rotation, control-task creation, agent task delivery, and task acknowledgement
+- `server/storage.py` now also stores offline authorization metadata and agent control task records
 
 ## Admin UI
 - `server/static/` — static admin pages and JS assets
