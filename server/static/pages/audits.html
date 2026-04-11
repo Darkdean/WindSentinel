@@ -1,0 +1,36 @@
+<section>
+  <h2>审计日志</h2>
+  <div class="grid">
+    <div>
+      <input id="audit-username" placeholder="用户名过滤"/>
+      <input id="audit-action" placeholder="动作过滤"/>
+      <input id="audit-since-date" type="datetime-local"/>
+      <input id="audit-until-date" type="datetime-local"/>
+      <input id="audit-limit" placeholder="条数" value="200"/>
+      <div class="row">
+        <select id="audit-bucket">
+          <option value="day">day</option>
+          <option value="hour">hour</option>
+        </select>
+        <button id="btn-load-audits">刷新审计</button>
+        <button id="btn-audit-chart">刷新图表</button>
+      </div>
+    </div>
+    <div>
+      <div id="audit-table"></div>
+      <pre id="audit-list"></pre>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="chart-wrap">
+      <h3>动作统计</h3>
+      <canvas id="audit-actions" width="600" height="220"></canvas>
+      <div id="tooltip-actions" class="tooltip"></div>
+    </div>
+    <div class="chart-wrap">
+      <h3>时间序列</h3>
+      <canvas id="audit-series" width="600" height="220"></canvas>
+      <div id="tooltip-series" class="tooltip"></div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,12 @@
+.admin-body { margin: 0; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 240px; background: #0b1220; padding: 16px; }
+.content { flex: 1; padding: 16px; overflow: auto; }
+.brand { font-weight: 700; margin-bottom: 12px; }
+.nav { list-style: none; padding: 0; margin: 0; }
+.nav > li { padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.nav > li:hover { background: #1f2937; }
+.nav-children { list-style: none; padding: 0 0 0 12px; margin: 0 0 8px 0; }
+.nav-children li { padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.nav-children li:hover { background: #1f2937; }
+.nav-hidden { display: none; }

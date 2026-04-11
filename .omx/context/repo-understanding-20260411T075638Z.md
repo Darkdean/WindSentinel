@@ -1,0 +1,25 @@
+# Context Snapshot: repo-understanding
+
+- Task statement: Understand the current repository structure and codebase before receiving detailed requirements.
+- Desired outcome: Evidence-backed mental model of system architecture, major modules, entry points, and client/server interaction surfaces.
+- Stated solution: Perform brownfield repository reconnaissance only; no implementation.
+- Probable intent hypothesis: User wants future requirements handled accurately for a security product with both agent and server components.
+- Known facts/evidence:
+  - Rust agent in `src/` (`src/main.rs`)
+  - Python FastAPI admin/server in `server/` (`server/main.py`)
+  - Static admin UI in `server/static/`
+  - Build manifests: `Cargo.toml`, `server/requirements.txt`
+- Constraints:
+  - Deep-interview mode active
+  - No implementation yet
+  - Need brownfield grounding before asking requirement questions
+- Unknowns/open questions:
+  - User's actual upcoming requirement
+  - Whether target area is agent, server, UI, or cross-cutting
+  - Desired depth/risk tolerance for future changes
+- Decision-boundary unknowns:
+  - What OMX may decide autonomously once requirement is given
+  - What must be confirmed before changing security-sensitive behaviors
+- Likely codebase touchpoints:
+  - `src/main.rs`, `src/policy.rs`, `src/log_store.rs`, `src/remote_shell.rs`, `src/lock.rs`
+  - `server/main.py`, `server/storage.py`, `server/models.py`, `server/static/`

@@ -1,0 +1,35 @@
+<section>
+  <h2>登录黑名单</h2>
+  <div class="grid">
+    <div>
+      <h3>IP 黑名单</h3>
+      <textarea id="login-blacklist-ips" rows="6" placeholder="每行一个IP"></textarea>
+    </div>
+    <div>
+      <h3>设备类型黑名单</h3>
+      <textarea id="login-blacklist-devices" rows="6" placeholder="每行一个设备类型，例如 mobile/desktop/tablet/bot/unknown"></textarea>
+    </div>
+  </div>
+  <div class="grid">
+    <div>
+      <h3>UA 关键字黑名单</h3>
+      <textarea id="login-blacklist-ua" rows="6" placeholder="每行一个关键字，命中即拒绝"></textarea>
+    </div>
+    <div>
+      <h3>浏览器黑名单</h3>
+      <textarea id="login-blacklist-browsers" rows="6" placeholder="每行一个浏览器，例如 chrome/firefox/safari/edge/ie/unknown"></textarea>
+    </div>
+  </div>
+  <div class="grid">
+    <div>
+      <h3>系统黑名单</h3>
+      <textarea id="login-blacklist-os" rows="6" placeholder="每行一个系统，例如 windows/macos/linux/android/ios/unknown"></textarea>
+    </div>
+    <div></div>
+  </div>
+  <div class="row">
+    <button id="btn-login-blacklist-save">保存</button>
+    <button id="btn-login-blacklist-refresh">刷新</button>
+  </div>
+  <pre id="login-blacklist-status"></pre>
+</section>

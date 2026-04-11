@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>WindSentinelAdmin</title>
+  <link rel="stylesheet" href="/admin/ui/styles.css"/>
+</head>
+<body>
+  <h1>WindSentinelAdmin</h1>
+  <section>
+    <h2>登录</h2>
+    <div class="grid">
+      <div>
+        <input id="login-user" placeholder="用户名"/>
+        <input id="login-pass" type="password" placeholder="密码"/>
+        <input id="login-mfa" placeholder="MFA(如已绑定)"/>
+        <button id="btn-login">登录</button>
+      </div>
+      <div>
+        <button id="btn-bind-mfa">绑定MFA</button>
+        <pre id="mfa-secret"></pre>
+        <input id="old-pass" type="password" placeholder="旧密码"/>
+        <input id="new-pass" type="password" placeholder="新密码"/>
+        <input id="change-mfa" placeholder="MFA"/>
+        <button id="btn-change-pass">修改密码</button>
+      </div>
+    </div>
+    <pre id="login-status"></pre>
+  </section>
+  <section>
+    <h2>客户端</h2>
+    <div class="row">
+      <button id="btn-load-agents">刷新列表</button>
+      <select id="agent-list"></select>
+    </div>
+    <div class="row">
+      <input id="agent-search" placeholder="搜索 agent"/>
+      <select id="agent-filter-group"></select>
+      <select id="agent-filter-tag"></select>
+      <button id="btn-agent-filter">筛选</button>
+      <button id="btn-agent-filter-reset">清除筛选</button>
+    </div>
+    <div class="row">
+      <input id="agent-offset" placeholder="offset" value="0"/>
+      <input id="agent-limit" placeholder="limit" value="200"/>
+      <button id="btn-agent-prev">上一页</button>
+      <button id="btn-agent-next">下一页</button>
+    </div>
+    <div id="agent-total"></div>
+    <pre id="agent-health"></pre>
+  </section>
+  <section>
+    <h2>Agent 管理</h2>
+    <div class="grid">
+      <div>
+        <input id="agent-display-name" placeholder="显示名"/>
+        <select id="agent-group"></select>
+        <input id="agent-tags" placeholder="标签（逗号分隔）"/>
+        <textarea id="agent-notes" rows="4" placeholder="备注"></textarea>
+        <div class="row">
+          <button id="btn-agent-load">加载配置</button>
+          <button id="btn-agent-save">保存配置</button>
+        </div>
+      </div>
+      <div>
+        <h3>分组</h3>
+        <input id="group-name" placeholder="分组名"/>
+        <input id="group-desc" placeholder="分组说明"/>
+        <button id="btn-group-create">创建分组</button>
+        <pre id="group-list"></pre>
+        <input id="group-delete-id" placeholder="删除分组ID"/>
+        <button id="btn-group-delete">删除分组</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div>
+        <h3>标签</h3>
+        <input id="tag-name" placeholder="标签名"/>
+        <button id="btn-tag-create">创建标签</button>
+        <pre id="tag-list"></pre>
+        <input id="tag-delete-id" placeholder="删除标签ID"/>
+        <button id="btn-tag-delete">删除标签</button>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>Agent 配置生成</h2>
+    <div class="grid">
+      <div>
+        <input id="cfg-agent-id" placeholder="agent_id（可空）"/>
+        <input id="cfg-server-url" placeholder="server_url"/>
+        <input id="cfg-shared-key" placeholder="shared_key_b64"/>
+        <input id="cfg-shell-host" placeholder="shell_host"/>
+        <input id="cfg-shell-port" placeholder="shell_port" value="9001"/>
+        <div class="row">
+          <button id="btn-cfg-template">加载模板</button>
+          <button id="btn-cfg-sign">签名预览</button>
+          <button id="btn-cfg-download">下载配置</button>
+          <button id="btn-cfg-package">下载包</button>
+          <button id="btn-cfg-meta">包信息</button>
+        </div>
+        <div class="row">
+          <input id="cfg-template-name" placeholder="模板名"/>
+          <button id="btn-cfg-template-save">保存模板</button>
+          <select id="cfg-template-list"></select>
+          <button id="btn-cfg-template-load">加载模板</button>
+          <button id="btn-cfg-template-delete">删除模板</button>
+        </div>
+        <div class="row">
+          <button id="btn-cfg-template-export">导出模板</button>
+          <input id="cfg-template-import" type="file"/>
+          <button id="btn-cfg-template-import">导入模板</button>
+        </div>
+        <div class="row">
+          <button id="btn-cfg-template-versions">模板历史</button>
+          <select id="cfg-template-version-list"></select>
+          <button id="btn-cfg-template-rollback">回滚版本</button>
+        </div>
+        <label>
+          <input type="checkbox" id="cfg-meta-auto"/>
+          自动刷新包信息
+        </label>
+      </div>
+      <div>
+        <pre id="cfg-preview"></pre>
+        <pre id="cfg-meta"></pre>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>策略下发</h2>
+    <textarea id="policy-json" rows="10"></textarea>
+    <div class="row">
+      <select id="policy-group"></select>
+      <button id="btn-policy-group">分组下发</button>
+      <select id="policy-tag"></select>
+      <button id="btn-policy-tag">标签下发</button>
+    </div>
+    <button id="btn-send-policy">下发策略</button>
+    <div class="row">
+      <button id="btn-start-shell">开启远程Shell</button>
+      <button id="btn-lock">锁定</button>
+      <button id="btn-unlock">解锁</button>
+    </div>
+    <pre id="policy-status"></pre>
+    <button id="btn-policy-retry">重试失败</button>
+    <pre id="policy-batch-result"></pre>
+  </section>
+  <section>
+    <h2>用户管理</h2>
+    <div class="grid">
+      <div>
+        <button id="btn-load-users">刷新用户</button>
+        <pre id="user-list"></pre>
+      </div>
+      <div>
+        <input id="new-user" placeholder="用户名"/>
+        <input id="new-pass" type="password" placeholder="密码"/>
+        <input id="new-role" placeholder="角色(admin/auditor/operator)"/>
+        <button id="btn-create-user">创建用户</button>
+        <input id="delete-user" placeholder="删除用户名"/>
+        <button id="btn-delete-user">删除用户</button>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>审计日志</h2>
+    <div class="grid">
+      <div>
+        <input id="audit-username" placeholder="用户名过滤"/>
+        <input id="audit-action" placeholder="动作过滤"/>
+        <input id="audit-since-date" type="datetime-local"/>
+        <input id="audit-until-date" type="datetime-local"/>
+        <input id="audit-limit" placeholder="条数" value="200"/>
+        <button id="btn-load-audits">刷新审计</button>
+      </div>
+      <div>
+        <pre id="audit-list"></pre>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="chart-wrap">
+        <h3>动作统计</h3>
+        <canvas id="audit-actions" width="600" height="220"></canvas>
+        <div id="tooltip-actions" class="tooltip"></div>
+      </div>
+      <div class="chart-wrap">
+        <h3>时间序列</h3>
+        <div class="row">
+          <select id="audit-bucket">
+            <option value="day">day</option>
+            <option value="hour">hour</option>
+          </select>
+          <button id="btn-audit-chart">刷新图表</button>
+        </div>
+        <canvas id="audit-series" width="600" height="220"></canvas>
+        <div id="tooltip-series" class="tooltip"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <h2>规则配置</h2>
+    <div class="row">
+      <button id="btn-load-rules">刷新规则</button>
+      <select id="rule-list"></select>
+      <select id="rule-versions-left"></select>
+      <select id="rule-versions-right"></select>
+    </div>
+    <input id="rule-name" placeholder="规则文件名"/>
+    <textarea id="rule-content" rows="10" placeholder="规则内容"></textarea>
+    <div class="row">
+      <button id="btn-save-rule">保存规则</button>
+      <button id="btn-restore-rule">恢复版本</button>
+      <button id="btn-diff-rule">规则对比</button>
+      <button id="btn-copy-diff">复制差异</button>
+      <button id="btn-rule-export">导出规则</button>
+      <input id="rule-import-file" type="file"/>
+      <button id="btn-rule-import">导入规则</button>
+    </div>
+    <div class="row">
+      <input id="rule-export-filter" placeholder="导出规则名(逗号分隔)"/>
+      <select id="rule-import-mode">
+        <option value="overwrite">覆盖</option>
+        <option value="skip">跳过冲突</option>
+      </select>
+      <button id="btn-rule-import-preview">导入预览</button>
+    </div>
+    <div id="diff-toast" class="toast">已复制</div>
+    <pre id="rule-status"></pre>
+    <div id="rule-diff"></div>
+  </section>
+  <section>
+    <h2>日志查询</h2>
+    <textarea id="sql-query" rows="3" placeholder="SQL 查询语句"></textarea>
+    <button id="btn-run-query">查询</button>
+    <pre id="query-result"></pre>
+  </section>
+  <section>
+    <h2>远程Shell伪终端</h2>
+    <div class="row">
+      <input id="shell-search" placeholder="检索关键字"/>
+      <select id="shell-kind">
+        <option value="">all</option>
+        <option value="input">input</option>
+        <option value="output">output</option>
+      </select>
+      <input id="shell-since-date" type="datetime-local"/>
+      <input id="shell-until-date" type="datetime-local"/>
+      <input id="shell-offset" placeholder="offset" value="0"/>
+      <input id="shell-limit" placeholder="limit" value="200"/>
+      <button id="btn-shell-search">查询</button>
+    </div>
+    <div class="row">
+      <button id="btn-shell-prev">上一页</button>
+      <button id="btn-shell-next">下一页</button>
+      <button id="btn-shell-history">加载历史</button>
+      <button id="btn-shell-clear">清空历史</button>
+      <button id="btn-shell-export-json">导出JSON</button>
+      <button id="btn-shell-export-csv">导出CSV</button>
+    </div>
+    <div class="row">
+      <input id="shell-input" placeholder="输入命令"/>
+      <button id="btn-shell-send">发送</button>
+    </div>
+    <pre id="shell-output"></pre>
+  </section>
+  <script src="/admin/ui/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<section>
+  <h2>Agent 管理</h2>
+  <div class="grid">
+    <div>
+      <input id="agent-display-name" placeholder="显示名"/>
+      <select id="agent-group"></select>
+      <input id="agent-tags" placeholder="标签（逗号分隔）"/>
+      <textarea id="agent-notes" rows="4" placeholder="备注"></textarea>
+      <div class="row">
+        <button id="btn-agent-load">加载配置</button>
+        <button id="btn-agent-save">保存配置</button>
+      </div>
+    </div>
+    <div>
+      <h3>分组</h3>
+      <input id="group-name" placeholder="分组名"/>
+      <input id="group-desc" placeholder="分组说明"/>
+      <button id="btn-group-create">创建分组</button>
+      <pre id="group-list"></pre>
+      <input id="group-delete-id" placeholder="删除分组ID"/>
+      <button id="btn-group-delete">删除分组</button>
+    </div>
+  </div>
+  <div class="grid">
+    <div>
+      <h3>标签</h3>
+      <input id="tag-name" placeholder="标签名"/>
+      <button id="btn-tag-create">创建标签</button>
+      <pre id="tag-list"></pre>
+      <input id="tag-delete-id" placeholder="删除标签ID"/>
+      <button id="btn-tag-delete">删除标签</button>
+    </div>
+  </div>
+</section>

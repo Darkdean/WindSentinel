@@ -1,0 +1,33 @@
+<section>
+  <h2>规则配置</h2>
+  <div class="row">
+    <button id="btn-load-rules">加载规则</button>
+    <select id="rule-list"></select>
+  </div>
+  <div class="row">
+    <input id="rule-name" placeholder="规则名"/>
+  </div>
+  <textarea id="rule-content" rows="10" placeholder="规则内容"></textarea>
+  <div class="row">
+    <button id="btn-save-rule">保存规则</button>
+    <button id="btn-restore-rule">恢复版本</button>
+    <button id="btn-diff-rule">规则对比</button>
+    <button id="btn-copy-diff">复制差异</button>
+    <button id="btn-rule-export">导出规则</button>
+    <input id="rule-import-file" type="file"/>
+    <button id="btn-rule-import">导入规则</button>
+  </div>
+  <div class="row">
+    <input id="rule-export-filter" placeholder="导出规则名(逗号分隔)"/>
+    <select id="rule-import-mode">
+      <option value="overwrite">覆盖</option>
+      <option value="skip">跳过冲突</option>
+    </select>
+    <button id="btn-rule-import-preview">导入预览</button>
+  </div>
+  <div class="row">
+    <select id="rule-version-list"></select>
+  </div>
+  <pre id="rule-status"></pre>
+  <pre id="rule-diff"></pre>
+</section>

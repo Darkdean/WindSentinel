@@ -1,0 +1,30 @@
+# Context Snapshot: project-understanding
+
+- Task statement: Understand the current repository's overall structure and codebase before gathering the user's concrete requirements.
+- Desired outcome: Produce an evidence-backed mental model of the client/server architecture, core modules, data flows, and likely change surfaces.
+- Stated solution: Read the brownfield codebase first; do not implement anything yet.
+- Probable intent hypothesis: The user wants follow-up requirements to land in the right subsystem of a security product with both endpoint-agent and admin-server responsibilities.
+- Known facts/evidence:
+  - Repository is a mixed Rust + Python project named WindSentinel in README (`README.md`).
+  - Rust client/agent lives under `src/` and is built by Cargo (`Cargo.toml`, `src/main.rs`).
+  - Python admin server lives under `server/` using FastAPI + SQLite + static admin UI (`server/main.py`, `server/storage.py`, `server/static/`).
+  - Client collects process/network/health telemetry, uploads logs/health, polls policy, and can start a remote shell (`src/main.rs`, `src/process.rs`, `src/network.rs`, `src/health.rs`, `src/policy.rs`, `src/remote_shell.rs`).
+  - Server ingests encrypted health/log uploads, stores data locally, applies yara rules, exposes admin APIs/UI, and can issue policy / remote shell / lock actions (`server/main.py`, `server/storage.py`, `server/rules/default.yar`).
+- Constraints:
+  - Deep-interview mode only; no implementation.
+  - Need to minimize user effort by discovering codebase facts directly.
+  - Follow evidence-based questioning for brownfield work.
+- Unknowns/open questions:
+  - Which subsystem the user's eventual requirement targets: agent, admin server, UI, policy/rules, logging pipeline, auth, or shell.
+  - Whether the requirement is product/feature, security hardening, bug fix, or refactor.
+  - What boundaries/non-goals the user wants preserved.
+- Decision-boundary unknowns:
+  - How much architecture change is allowed.
+  - Whether protocol/storage compatibility must remain stable.
+  - Whether UX/admin workflow changes are in scope.
+- Likely codebase touchpoints:
+  - Agent runtime loop: `src/main.rs`
+  - Agent config/protocol: `src/config.rs`, `src/log_store.rs`, `src/policy.rs`, `src/remote_shell.rs`
+  - Server API/auth/control plane: `server/main.py`
+  - Server persistence: `server/storage.py`
+  - API schemas/UI: `server/models.py`, `server/static/`

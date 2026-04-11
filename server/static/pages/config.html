@@ -1,0 +1,44 @@
+<section>
+  <h2>Agent 配置生成</h2>
+  <div class="grid">
+    <div>
+      <input id="cfg-agent-id" placeholder="agent_id（可空）"/>
+      <input id="cfg-server-url" placeholder="server_url"/>
+      <input id="cfg-shared-key" placeholder="shared_key_b64"/>
+      <input id="cfg-shell-host" placeholder="shell_host"/>
+      <input id="cfg-shell-port" placeholder="shell_port" value="9001"/>
+      <div class="row">
+        <button id="btn-cfg-template">加载模板</button>
+        <button id="btn-cfg-sign">签名预览</button>
+        <button id="btn-cfg-download">下载配置</button>
+        <button id="btn-cfg-package">下载包</button>
+        <button id="btn-cfg-meta">包信息</button>
+      </div>
+      <div class="row">
+        <input id="cfg-template-name" placeholder="模板名"/>
+        <button id="btn-cfg-template-save">保存模板</button>
+        <select id="cfg-template-list"></select>
+        <button id="btn-cfg-template-load">加载模板</button>
+        <button id="btn-cfg-template-delete">删除模板</button>
+      </div>
+      <div class="row">
+        <button id="btn-cfg-template-export">导出模板</button>
+        <input id="cfg-template-import" type="file"/>
+        <button id="btn-cfg-template-import">导入模板</button>
+      </div>
+      <div class="row">
+        <button id="btn-cfg-template-versions">模板历史</button>
+        <select id="cfg-template-version-list"></select>
+        <button id="btn-cfg-template-rollback">回滚版本</button>
+      </div>
+      <label>
+        <input type="checkbox" id="cfg-meta-auto"/>
+        自动刷新包信息
+      </label>
+    </div>
+    <div>
+      <pre id="cfg-preview"></pre>
+      <pre id="cfg-meta"></pre>
+    </div>
+  </div>
+</section>

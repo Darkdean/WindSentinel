@@ -1,0 +1,23 @@
+<section>
+  <h2>策略下发</h2>
+  <div class="grid">
+    <div>
+      <textarea id="policy-json" rows="10" placeholder="策略JSON"></textarea>
+      <div class="row">
+        <button id="btn-send-policy">向当前Agent下发</button>
+        <button id="btn-policy-group">向分组下发</button>
+        <button id="btn-policy-tag">向标签下发</button>
+      </div>
+      <div class="row">
+        <select id="policy-group"></select>
+        <select id="policy-tag"></select>
+        <input id="policy-retry" placeholder="失败Agent IDs(逗号)"/>
+        <button id="btn-policy-retry">重试失败批次</button>
+      </div>
+    </div>
+    <div>
+      <pre id="policy-status"></pre>
+      <pre id="policy-batch-result"></pre>
+    </div>
+  </div>
+</section>

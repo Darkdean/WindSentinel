@@ -1,0 +1,23 @@
+<section>
+  <h2>API 配置</h2>
+  <div class="grid">
+    <div>
+      <input id="api-endpoint-name" placeholder="端点标识"/>
+      <input id="api-endpoint-alias" placeholder="端点别名(可空)"/>
+      <select id="api-endpoint-role">
+        <option value="admin">管理员</option>
+        <option value="auditor">审计员</option>
+        <option value="operator">操作员</option>
+      </select>
+      <input id="api-endpoint-functions" placeholder="功能列表(逗号分隔)"/>
+      <button id="btn-api-endpoint-create">创建API端点</button>
+      <pre id="api-endpoint-key"></pre>
+    </div>
+    <div>
+      <button id="btn-api-endpoint-refresh">刷新列表</button>
+      <pre id="api-endpoint-list"></pre>
+      <input id="api-endpoint-delete-id" placeholder="删除端点ID"/>
+      <button id="btn-api-endpoint-delete">删除端点</button>
+    </div>
+  </div>
+</section>

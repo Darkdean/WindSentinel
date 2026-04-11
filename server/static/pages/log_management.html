@@ -1,0 +1,32 @@
+<section>
+  <h2>日志管理</h2>
+  <div class="grid">
+    <div>
+      <h3>日志导出</h3>
+      <select id="log-export-type">
+        <option value="kafka">Kafka</option>
+        <option value="rabbitmq">RabbitMQ</option>
+        <option value="elasticsearch">ElasticSearch</option>
+      </select>
+      <div class="row">
+        <label><input id="log-export-type-health" type="checkbox" checked/> 健康上报</label>
+        <label><input id="log-export-type-client" type="checkbox" checked/> 客户端日志</label>
+        <label><input id="log-export-type-audit" type="checkbox" checked/> 操作审计</label>
+      </div>
+      <textarea id="log-export-config" rows="6" placeholder='配置JSON'></textarea>
+      <label><input id="log-export-enabled" type="checkbox" checked/> 启用</label>
+      <button id="btn-log-export-create">新增导出</button>
+      <button id="btn-log-export-refresh">刷新导出列表</button>
+      <pre id="log-export-list"></pre>
+      <input id="log-export-delete-id" placeholder="删除导出ID"/>
+      <button id="btn-log-export-delete">删除导出</button>
+    </div>
+    <div>
+      <h3>日志生存周期</h3>
+      <input id="log-retention-days" placeholder="保留天数"/>
+      <input id="log-retention-bytes" placeholder="最大字节数"/>
+      <button id="btn-log-retention-save">保存</button>
+      <pre id="log-retention-status"></pre>
+    </div>
+  </div>
+</section>
