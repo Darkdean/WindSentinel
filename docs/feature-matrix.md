@@ -49,3 +49,6 @@
 
 ## Tracked design reference
 - See `docs/adr/ADR-0001-stop-uninstall-authorization.md` for the accepted V1 authorization design baseline.
+
+## macOS formalization progress
+- macOS packaging formalization now includes launchd install/uninstall artifacts for the current target

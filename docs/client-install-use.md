@@ -20,3 +20,32 @@ M0 baseline skeleton. This document must be completed and kept in sync during im
 - local stop/uninstall command path is implemented in the agent binary, but full install/runbook documentation is still pending
 - server-issued control-task consumption and helper-based uninstall are implemented in code, but still need end-to-end deployment validation
 - remote shell is out of scope for V1 and removed from the V1-visible client config/runtime surface
+
+
+## Current macOS 26 / aarch64 install path
+### Files created for packaging
+- `packaging/macos/com.windsentinel.agent.plist`
+- `packaging/macos/install_agent.sh`
+- `packaging/macos/uninstall_agent.sh`
+
+### Intended install layout
+- binary: `/Library/WindSentinel/bin/windsentinel_agent`
+- config: `/Library/WindSentinel/config/config.json`
+- logs: `/Library/WindSentinel/logs/`
+- state: `/Library/WindSentinel/state/`
+- launchd plist: `/Library/LaunchDaemons/com.windsentinel.agent.plist`
+
+### Basic install flow
+```bash
+sudo packaging/macos/install_agent.sh <agent-binary> <signed-config.json>
+```
+
+### Basic uninstall flow
+```bash
+sudo packaging/macos/uninstall_agent.sh
+```
+
+### Notes
+- current formalization target is macOS 26 on aarch64
+- launchd packaging is now scaffolded, but a full installer-package workflow is still future work
+- local control commands and server-issued control tasks still rely on the configured control metadata in the signed config

@@ -11,6 +11,7 @@
 - [ ] all V1 required feature areas verified
 - [ ] remote shell absent / inaccessible in V1
 - [ ] Linux deployment docs validated
+- [ ] macOS current-target install/uninstall artifacts validated
 - [ ] code docs and architecture docs updated
 - [ ] version/tag prepared in git
 - [ ] release notes drafted
