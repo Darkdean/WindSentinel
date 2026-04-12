@@ -8,6 +8,15 @@
     <array>
       <string>/Library/WindSentinel/bin/windsentinel_agent</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>WINDSENTINEL_AGENT_CONFIG_PATH</key>
+      <string>/Library/WindSentinel/config/config.json</string>
+      <key>WINDSENTINEL_AGENT_STATE_DIR</key>
+      <string>/Library/WindSentinel/state</string>
+      <key>WINDSENTINEL_CONFIG_VERIFY_KEY_B64</key>
+      <string>__VERIFY_KEY_B64__</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

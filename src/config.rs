@@ -24,9 +24,9 @@ pub struct AgentConfig {
     pub control: ControlConfig,
 }
 
-impl AgentConfig {
-    pub fn load() -> Result<Self> {
-        let path = Self::config_path();
+ impl AgentConfig {
+     pub fn load() -> Result<Self> {
+         let path = Self::config_path();
         if path.exists() {
             let contents = fs::read_to_string(&path).context("read config")?;
             let value: serde_json::Value =
@@ -52,20 +52,26 @@ impl AgentConfig {
         fs::create_dir_all(path.parent().unwrap()).ok();
         fs::write(&path, contents).context("write config")?;
         Ok(cfg)
-    }
+     }
+ 
+     pub fn config_path() -> PathBuf {
+         if let Ok(path) = std::env::var("WINDSENTINEL_AGENT_CONFIG_PATH") {
+             return PathBuf::from(path);
+         }
+         let mut base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+         base.push("WindSentinelAgent");
+         base.push("config.json");
+         base
+     }
 
-    pub fn config_path() -> PathBuf {
-        let mut base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        base.push("WindSentinelAgent");
-        base.push("config.json");
-        base
-    }
-
-    pub fn state_dir() -> PathBuf {
-        let mut base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        base.push("WindSentinelAgent");
-        base
-    }
+     pub fn state_dir() -> PathBuf {
+         if let Ok(path) = std::env::var("WINDSENTINEL_AGENT_STATE_DIR") {
+             return PathBuf::from(path);
+         }
+         let mut base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+         base.push("WindSentinelAgent");
+         base
+     }
 
     pub fn control_state_path() -> PathBuf {
         let mut path = Self::state_dir();
