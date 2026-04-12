@@ -23,6 +23,7 @@ use types::{LogRecord, RecordKind};
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let config = AgentConfig::load().context("load config")?;
+    control::append_runtime_log(&config, "agent startup");
     if args.len() > 1 {
         return control::handle_cli(&config, &args).await;
     }
@@ -80,6 +81,7 @@ async fn main() -> Result<()> {
             let _ = control::sync_control_state(&config_clone).await;
             let stopped = control::is_stopped(&config_clone).unwrap_or(false);
             if stopped {
+                control::append_runtime_log(&config_clone, "heartbeat-only loop tick");
                 if let Err(err) = control::heartbeat(&config_clone).await {
                     let _ = log_store_clone
                         .lock()

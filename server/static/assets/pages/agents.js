@@ -7,6 +7,11 @@ window.pageInits["agents"] = async function () {
   bind("btn-agent-next", "click", () => pageAgents(1));
   bind("btn-agents-stop", "click", () => createSelectedClientControlTasks("stop"));
   bind("btn-agents-uninstall", "click", () => createSelectedClientControlTasks("uninstall"));
+  bind("btn-agents-delete", "click", deleteSelectedAgentRecords);
+  bind("agent-show-inactive", "change", () => {
+    currentShowInactive = !!document.getElementById("agent-show-inactive")?.checked;
+    loadAgents();
+  });
   await loadGroups();
   await loadTags();
   await loadAgents();

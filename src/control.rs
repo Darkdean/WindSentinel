@@ -86,6 +86,22 @@ pub async fn sync_control_state(config: &AgentConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn append_runtime_log(config: &AgentConfig, message: &str) {
+    let path = runtime_log_path(config);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let mut line = String::new();
+    line.push_str(&format!(
+        "{} {}\n",
+        chrono::Utc::now().to_rfc3339(),
+        message
+    ));
+    if let Ok(mut fh) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = fh.write_all(line.as_bytes());
+    }
+}
+
 pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
     let client = reqwest::Client::new();
     let response = client
@@ -101,6 +117,7 @@ pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
     let Some(task) = envelope.task else {
         return Ok(());
     };
+    append_runtime_log(config, &format!("received control task {} type={}", task.id, task.task_type));
     ack_task(
         config,
         task.id,
@@ -112,6 +129,7 @@ pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
     .ok();
     if task.task_type == "stop" {
         set_current_mode(config, "stopped")?;
+        append_runtime_log(config, "entered stopped mode");
         ack_task(
             config,
             task.id,
@@ -178,6 +196,7 @@ pub async fn heartbeat(config: &AgentConfig) -> Result<()> {
             && state.current_mode == "stopped"
         {
             state.current_mode = default_running_state();
+            append_runtime_log(config, "resumed from stopped mode after server heartbeat response");
         }
         state.last_heartbeat_at = Some(chrono::Utc::now().timestamp());
         write_control_state(&AgentConfig::control_state_path(), &state)?;
@@ -765,6 +784,14 @@ fn helper_log_path(manifest: &ControlManifest) -> PathBuf {
         return parent.join("logs").join("control-helper.log");
     }
     PathBuf::from("/tmp/windsentinel-control-helper.log")
+}
+
+fn runtime_log_path(_config: &AgentConfig) -> PathBuf {
+    let state_dir = AgentConfig::state_dir();
+    if let Some(parent) = state_dir.parent() {
+        return parent.join("logs").join("agent-runtime.log");
+    }
+    PathBuf::from("/tmp/windsentinel-agent-runtime.log")
 }
 
 async fn ack_task(

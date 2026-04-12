@@ -559,7 +559,7 @@ def get_policy(agent_id):
     return json.loads(row["payload"])
 
 
-def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
+def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200, include_inactive=False, inactive_after_seconds=1800):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -601,6 +601,7 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
     conn.close()
     result = []
     term = q.strip().lower() if q else None
+    now = int(time.time())
     for row in rows:
         data = dict(row)
         tags = data.get("tags")
@@ -610,6 +611,17 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
         if group_id is not None and data.get("group_id") != group_id:
             continue
         if tag_id is not None and tag_id not in parsed_tag_ids:
+            continue
+        last_seen = data.get("last_seen")
+        desired_state = data.get("desired_state")
+        actual_state = data.get("actual_state")
+        is_inactive = (
+            desired_state in {"uninstalled", "stopped"}
+            or actual_state in {"uninstalled", "stopped"}
+            or (last_seen is not None and int(last_seen) < now - int(inactive_after_seconds))
+        )
+        data["is_inactive"] = bool(is_inactive)
+        if not include_inactive and data["is_inactive"]:
             continue
         if term:
             haystack = " ".join(
@@ -676,7 +688,64 @@ def get_agent_detail(agent_id):
         data["tags"] = data["tags"].split(",")
     else:
         data["tags"] = []
+    last_seen = data.get("last_seen")
+    desired_state = data.get("desired_state")
+    actual_state = data.get("actual_state")
+    now = int(time.time())
+    data["is_inactive"] = bool(
+        desired_state in {"uninstalled", "stopped"}
+        or actual_state in {"uninstalled", "stopped"}
+        or (last_seen is not None and int(last_seen) < now - 1800)
+    )
     return data
+
+
+def delete_agent_record(agent_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("delete from health_reports where agent_id = ?", (agent_id,))
+    cur.execute("delete from client_logs where agent_id = ?", (agent_id,))
+    cur.execute("delete from policies where agent_id = ?", (agent_id,))
+    cur.execute("delete from agent_profiles where agent_id = ?", (agent_id,))
+    cur.execute("delete from agent_tag_map where agent_id = ?", (agent_id,))
+    cur.execute("delete from agent_offline_codes where agent_id = ?", (agent_id,))
+    cur.execute("delete from agent_control_tasks where agent_id = ?", (agent_id,))
+    cur.execute("delete from agent_runtime_state where agent_id = ?", (agent_id,))
+    cur.execute("delete from audit_logs where target = ?", (agent_id,))
+    conn.commit()
+    conn.close()
+
+
+def cleanup_inactive_agent_records(inactive_after_seconds=1800):
+    conn = get_conn()
+    cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        """
+        select distinct a.agent_id
+        from (
+            select agent_id, max(ts) as last_seen from (
+                select agent_id, ts from health_reports
+                union all
+                select agent_id, ts from client_logs
+                union all
+                select agent_id, ts from policies
+                union all
+                select agent_id, updated_at as ts from agent_profiles
+            ) group by agent_id
+        ) a
+        left join agent_runtime_state ars on ars.agent_id = a.agent_id
+        where ars.desired_state = 'uninstalled'
+           or ars.actual_state = 'uninstalled'
+           or a.last_seen < %s
+        """,
+        (now - int(inactive_after_seconds),),
+    )
+    agent_ids = [row["agent_id"] for row in cur.fetchall()]
+    conn.close()
+    for agent_id in agent_ids:
+        delete_agent_record(agent_id)
+    return agent_ids
 
 
 def upsert_agent_profile(agent_id, display_name=None, notes=None, group_id=None):

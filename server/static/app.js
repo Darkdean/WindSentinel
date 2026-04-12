@@ -8,6 +8,7 @@ let agentLimit = 200;
 let lastBatchFailed = [];
 let metaTimer = null;
 let selectedAgentIds = new Set();
+let currentShowInactive = false;
 
 function api(path, options = {}) {
   const headers = options.headers || {};
@@ -435,6 +436,7 @@ async function loadAgents() {
   if (agentSearch) params.set("q", agentSearch);
   params.set("offset", String(agentOffset));
   params.set("limit", String(agentLimit));
+  if (currentShowInactive) params.set("include_inactive", "true");
   const res = await api("/admin/agents" + (params.toString() ? "?" + params.toString() : ""));
   const data = await res.json();
   const totalEl = document.getElementById("agent-total");
@@ -458,11 +460,45 @@ async function loadAgents() {
   } else {
     currentAgent = null;
   }
+  const inactiveToggle = document.getElementById("agent-show-inactive");
+  if (inactiveToggle) inactiveToggle.checked = currentShowInactive;
   renderAgentTable(data.items || []);
+  await loadAgentManageList();
 }
 
 async function selectAgent() {
   currentAgent = document.getElementById("agent-list").value;
+  await loadHealth();
+  await loadAgentProfile();
+  await loadClientControlState();
+  await loadClientControlTasks();
+}
+
+async function loadAgentManageList() {
+  const select = document.getElementById("agent-manage-list");
+  if (!select) return;
+  const params = new URLSearchParams({ offset: "0", limit: "500" });
+  if (currentShowInactive) params.set("include_inactive", "true");
+  const res = await api("/admin/agents?" + params.toString());
+  if (!res.ok) return;
+  const data = await res.json();
+  select.innerHTML = "";
+  (data.items || []).forEach(item => {
+    const opt = document.createElement("option");
+    opt.value = item.agent_id;
+    const state = item.is_inactive ? "inactive" : "active";
+    opt.textContent = item.agent_id + " [" + state + "]";
+    select.appendChild(opt);
+  });
+  if (currentAgent && Array.from(select.options).some(opt => opt.value === currentAgent)) {
+    select.value = currentAgent;
+  } else if (select.options.length > 0) {
+    currentAgent = select.value;
+  }
+}
+
+async function selectAgentFromManagePage() {
+  currentAgent = document.getElementById("agent-manage-list").value;
   await loadHealth();
   await loadAgentProfile();
   await loadClientControlState();
@@ -806,6 +842,7 @@ function resetAgentFilter() {
   if (offsetInput) offsetInput.value = "0";
   if (limitInput) limitInput.value = "200";
   selectedAgentIds.clear();
+  currentShowInactive = false;
   loadAgents();
 }
 
@@ -954,6 +991,30 @@ async function createSelectedClientControlTasks(taskType) {
       payload = text;
     }
     results.push({ agent_id: agentId, status: res.status, body: payload });
+  }
+  if (statusEl) statusEl.textContent = JSON.stringify(results, null, 2);
+  await loadAgents();
+}
+
+async function deleteSelectedAgentRecords() {
+  const statusEl = document.getElementById("agents-control-status");
+  const ids = Array.from(selectedAgentIds);
+  if (!ids.length) {
+    if (statusEl) statusEl.textContent = "请先选择至少一个客户端";
+    return;
+  }
+  const results = [];
+  for (const agentId of ids) {
+    const res = await api("/admin/agents/" + agentId + "/record", { method: "DELETE" });
+    const text = await res.text();
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+    results.push({ agent_id: agentId, status: res.status, body: payload });
+    if (res.ok) selectedAgentIds.delete(agentId);
   }
   if (statusEl) statusEl.textContent = JSON.stringify(results, null, 2);
   await loadAgents();

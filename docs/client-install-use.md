@@ -73,6 +73,7 @@ sudo packaging/macos/uninstall_agent.sh
 - pkg build output is now available for double-click installation through the macOS Installer GUI
 - local control commands and server-issued control tasks still rely on the configured control metadata in the signed config
 - formal stop/uninstall now depends on a detached helper process whose logs are written under `/Library/WindSentinel/logs/control-helper.log`
+- runtime agent activity is now additionally written to a plain-text runtime log under the client log directory (for the current target, `/Library/WindSentinel/logs/agent-runtime.log`)
 - stop semantics now require the running agent to enter a stopped mode where business collection/upload halts and only control-heartbeat traffic remains
 - uninstall semantics now require killing all agent processes before cleanup, with the goal of no remaining process and no remaining WindSentinel-owned data
 - on macOS, if uninstall cleanup needs administrator rights and the helper is not already running as root, the uninstall flow now raises a system password prompt through `osascript` to complete privileged cleanup

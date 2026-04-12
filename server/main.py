@@ -63,7 +63,9 @@ from storage import (
     create_group,
     create_agent_control_task,
     create_tag,
+    cleanup_inactive_agent_records,
     delete_user,
+    delete_agent_record,
     delete_group,
     delete_api_endpoint,
     delete_tag,
@@ -1426,10 +1428,11 @@ async def agents(
     q: Optional[str] = None,
     offset: int = 0,
     limit: int = 200,
+    include_inactive: bool = False,
     user=Depends(require_auth),
 ):
     require_access(user, {"admin", "auditor", "operator"}, "agents_view")
-    return list_agents(group_id, tag_id, q, offset, limit)
+    return list_agents(group_id, tag_id, q, offset, limit, include_inactive)
 
 
 @app.get("/admin/agents/{agent_id}")
@@ -1455,6 +1458,22 @@ async def update_agent_tags(agent_id: str, payload: AgentTagsPayload, request: R
     set_agent_tags(agent_id, payload.tags)
     audit_action(user, "update_agent_tags", request, target=agent_id)
     return {"status": "ok"}
+
+
+@app.delete("/admin/agents/{agent_id}/record")
+async def delete_agent_record_api(agent_id: str, request: Request, user=Depends(require_auth)):
+    require_access(user, {"admin", "operator"}, "agents_manage")
+    delete_agent_record(agent_id)
+    audit_action(user, "delete_agent_record", request, target=agent_id)
+    return {"status": "ok", "agent_id": agent_id}
+
+
+@app.post("/admin/agents/cleanup-inactive")
+async def cleanup_inactive_agents(request: Request, inactive_after_seconds: int = 1800, user=Depends(require_auth)):
+    require_access(user, {"admin", "operator"}, "agents_manage")
+    removed = cleanup_inactive_agent_records(inactive_after_seconds)
+    audit_action(user, "cleanup_inactive_agents", request, target=str(len(removed)))
+    return {"status": "ok", "removed": removed, "count": len(removed)}
 
 
 @app.get("/admin/health/{agent_id}")

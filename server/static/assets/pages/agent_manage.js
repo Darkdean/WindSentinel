@@ -1,4 +1,6 @@
 window.pageInits["agent_manage"] = async function () {
+  bind("agent-manage-list", "change", selectAgentFromManagePage);
+  bind("btn-agent-manage-refresh", "click", loadAgentManageList);
   bind("btn-agent-load", "click", loadAgentProfile);
   bind("btn-agent-save", "click", saveAgentProfile);
   bind("btn-group-create", "click", createGroup);
@@ -12,6 +14,7 @@ window.pageInits["agent_manage"] = async function () {
   bind("btn-control-uninstall", "click", () => createClientControlTask("uninstall"));
   await loadGroups();
   await loadTags();
+  await loadAgentManageList();
   await loadAgentProfile();
   await loadClientControlState();
   await loadClientControlTasks();

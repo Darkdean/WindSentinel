@@ -8,6 +8,10 @@
     <input id="agent-search" placeholder="搜索 agent"/>
     <select id="agent-filter-group"></select>
     <select id="agent-filter-tag"></select>
+    <label style="width:auto;display:flex;align-items:center;gap:6px;">
+      <input id="agent-show-inactive" type="checkbox" style="width:auto;"/>
+      展示过期客户端
+    </label>
     <button id="btn-agent-filter">筛选</button>
     <button id="btn-agent-filter-reset">清除筛选</button>
   </div>
@@ -28,6 +32,7 @@
       <div class="row">
         <button id="btn-agents-stop">停止选中客户端</button>
         <button id="btn-agents-uninstall">卸载选中客户端</button>
+        <button id="btn-agents-delete">删除选中记录</button>
       </div>
       <div id="agent-table"></div>
       <pre id="agents-control-status"></pre>
