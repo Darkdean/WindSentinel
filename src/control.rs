@@ -4,10 +4,12 @@ use base64::Engine;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const LOG_PATH: &str = "/tmp/log.dat";
 const SYSTEMD_UNIT_DIRS: &[&str] = &[
@@ -315,11 +317,37 @@ fn write_manifest(
 
 fn spawn_helper(manifest: &ControlManifest) -> Result<()> {
     let current_exe = std::env::current_exe().context("resolve helper exe")?;
-    Command::new(current_exe)
+    let helper_log_path = helper_log_path(manifest);
+    if let Some(parent) = helper_log_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let helper_log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&helper_log_path)
+        .context("open helper log")?;
+    let helper_err = helper_log
+        .try_clone()
+        .context("clone helper log handle")?;
+    let mut command = Command::new(current_exe);
+    command
         .arg("--internal-control-helper")
         .arg(&manifest.manifest_path)
-        .spawn()
-        .context("spawn control helper")?;
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(helper_log))
+        .stderr(Stdio::from(helper_err));
+    #[cfg(unix)]
+    {
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    command.spawn().context("spawn control helper")?;
     Ok(())
 }
 
@@ -471,6 +499,14 @@ fn remove_path_best_effort(path: &Path) {
 
 fn cleanup_manifest_file(manifest: &ControlManifest) {
     let _ = fs::remove_file(&manifest.manifest_path);
+}
+
+fn helper_log_path(manifest: &ControlManifest) -> PathBuf {
+    let state_dir = PathBuf::from(&manifest.state_dir);
+    if let Some(parent) = state_dir.parent() {
+        return parent.join("logs").join("control-helper.log");
+    }
+    PathBuf::from("/tmp/windsentinel-control-helper.log")
 }
 
 async fn ack_task(

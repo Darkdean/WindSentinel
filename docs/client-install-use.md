@@ -57,3 +57,4 @@ sudo packaging/macos/uninstall_agent.sh
 - current formalization target is macOS 26 on aarch64
 - launchd packaging is now scaffolded, but a full installer-package workflow is still future work
 - local control commands and server-issued control tasks still rely on the configured control metadata in the signed config
+- formal stop/uninstall now depends on a detached helper process whose logs are written under `/Library/WindSentinel/logs/control-helper.log`
