@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const LOG_PATH: &str = "/tmp/log.dat";
 const SYSTEMD_UNIT_DIRS: &[&str] = &[
@@ -503,6 +504,13 @@ fn perform_stop(manifest: &ControlManifest) -> Result<String> {
 }
 
 fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
+    if cfg!(target_os = "macos")
+        && requires_privileged_macos_cleanup(manifest)
+        && !is_running_as_root()
+    {
+        run_macos_privileged_uninstall(manifest)?;
+        return Ok("authorized uninstall completed".to_string());
+    }
     if cfg!(target_os = "macos") {
         stop_launchd_service(&manifest.service_name);
         terminate_agent_processes(&manifest.executable_path)?;
@@ -545,6 +553,21 @@ fn default_service_name() -> String {
     }
 }
 
+fn is_running_as_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+fn requires_privileged_macos_cleanup(manifest: &ControlManifest) -> bool {
+    manifest.executable_path.starts_with("/Library/") || manifest.state_dir.starts_with("/Library/")
+}
+
 fn stop_launchd_service(service_name: &str) {
     let _ = Command::new("launchctl")
         .args([
@@ -566,6 +589,64 @@ fn launchd_plist_candidates(service_name: &str) -> Vec<PathBuf> {
         paths.push(home.join(MACOS_USER_LAUNCHD_SUBDIR).join(format!("{}.plist", service_name)));
     }
     paths
+}
+
+fn run_macos_privileged_uninstall(manifest: &ControlManifest) -> Result<()> {
+    let script_path = write_privileged_cleanup_script(manifest)?;
+    let command = format!("/bin/bash {}", shell_escape(&script_path.to_string_lossy()));
+    let status = Command::new("osascript")
+        .arg("-e")
+        .arg(format!(
+            "do shell script {} with administrator privileges",
+            apple_script_string(&command)
+        ))
+        .status()
+        .context("run privileged uninstall osascript")?;
+    if !status.success() {
+        return Err(anyhow!("privileged uninstall was not completed"));
+    }
+    let _ = fs::remove_file(script_path);
+    Ok(())
+}
+
+fn write_privileged_cleanup_script(manifest: &ControlManifest) -> Result<PathBuf> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = PathBuf::from(format!("/tmp/windsentinel-privileged-uninstall-{}.sh", stamp));
+    let launchd_plist = PathBuf::from(MACOS_SYSTEM_LAUNCHD_DIR).join(format!("{}.plist", manifest.service_name));
+    let script = format!(
+        r#"#!/bin/bash
+set -euo pipefail
+launchctl bootout system {plist} >/dev/null 2>&1 || true
+pkill -TERM -f {exe} >/dev/null 2>&1 || true
+sleep 1
+pkill -9 -f {exe} >/dev/null 2>&1 || true
+rm -f {plist}
+rm -rf {root}
+"#,
+        plist = shell_escape(&launchd_plist.to_string_lossy()),
+        exe = shell_escape(&manifest.executable_path),
+        root = shell_escape(
+            &Path::new(&manifest.state_dir)
+                .parent()
+                .unwrap_or_else(|| Path::new(&manifest.state_dir))
+                .to_string_lossy()
+        ),
+    );
+    fs::write(&path, script).context("write privileged cleanup script")?;
+    Ok(path)
+}
+
+fn shell_escape(value: &str) -> String {
+    let escaped = value.replace('\'', "'\\''");
+    format!("'{}'", escaped)
+}
+
+fn apple_script_string(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{}\"", escaped)
 }
 
 fn remove_path_best_effort(path: &Path) {
