@@ -9,13 +9,14 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const DEFAULT_SERVICE_NAME: &str = "windsentinel-agent";
 const LOG_PATH: &str = "/tmp/log.dat";
 const SYSTEMD_UNIT_DIRS: &[&str] = &[
     "/etc/systemd/system",
     "/usr/lib/systemd/system",
     "/lib/systemd/system",
 ];
+const MACOS_SYSTEM_LAUNCHD_DIR: &str = "/Library/LaunchDaemons";
+const MACOS_USER_LAUNCHD_SUBDIR: &str = "Library/LaunchAgents";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ControlState {
@@ -188,7 +189,7 @@ fn build_state_from_config(control: &ControlConfig) -> Option<ControlState> {
         service_name: control
             .service_name
             .clone()
-            .unwrap_or_else(|| DEFAULT_SERVICE_NAME.to_string()),
+            .unwrap_or_else(default_service_name),
         offline_code_hash: control.offline_code_hash.clone()?,
         offline_code_salt: control.offline_code_salt.clone()?,
         offline_code_version: control.offline_code_version?,
@@ -388,19 +389,30 @@ fn wait_for_pid_exit(pid: u32) {
 }
 
 fn perform_stop(manifest: &ControlManifest) -> Result<String> {
-    run_systemctl(&["stop", &manifest.service_name]);
+    if cfg!(target_os = "macos") {
+        stop_launchd_service(&manifest.service_name);
+    } else {
+        run_systemctl(&["stop", &manifest.service_name]);
+    }
     Ok("authorized stop completed".to_string())
 }
 
 fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
-    run_systemctl(&["stop", &manifest.service_name]);
-    run_systemctl(&["disable", &manifest.service_name]);
-    for dir in SYSTEMD_UNIT_DIRS {
-        let path = PathBuf::from(dir).join(format!("{}.service", manifest.service_name));
-        remove_path_best_effort(&path);
+    if cfg!(target_os = "macos") {
+        stop_launchd_service(&manifest.service_name);
+        for path in launchd_plist_candidates(&manifest.service_name) {
+            remove_path_best_effort(&path);
+        }
+    } else {
+        run_systemctl(&["stop", &manifest.service_name]);
+        run_systemctl(&["disable", &manifest.service_name]);
+        for dir in SYSTEMD_UNIT_DIRS {
+            let path = PathBuf::from(dir).join(format!("{}.service", manifest.service_name));
+            remove_path_best_effort(&path);
+        }
+        run_systemctl(&["daemon-reload"]);
+        run_systemctl(&["reset-failed", &manifest.service_name]);
     }
-    run_systemctl(&["daemon-reload"]);
-    run_systemctl(&["reset-failed", &manifest.service_name]);
 
     remove_path_best_effort(Path::new(&manifest.log_path));
     remove_path_best_effort(Path::new(&manifest.control_state_path));
@@ -412,6 +424,38 @@ fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
 
 fn run_systemctl(args: &[&str]) {
     let _ = Command::new("systemctl").args(args).status();
+}
+
+fn default_service_name() -> String {
+    if cfg!(target_os = "macos") {
+        "com.windsentinel.agent".to_string()
+    } else {
+        "windsentinel-agent".to_string()
+    }
+}
+
+fn stop_launchd_service(service_name: &str) {
+    let _ = Command::new("launchctl")
+        .args(["bootout", &format!("system/{}", service_name)])
+        .status();
+    if let Ok(uid) = std::env::var("UID") {
+        let _ = Command::new("launchctl")
+            .args(["bootout", &format!("gui/{}/{}", uid, service_name)])
+            .status();
+    }
+    for path in launchd_plist_candidates(service_name) {
+        let _ = Command::new("launchctl")
+            .args(["unload", path.to_string_lossy().as_ref()])
+            .status();
+    }
+}
+
+fn launchd_plist_candidates(service_name: &str) -> Vec<PathBuf> {
+    let mut paths = vec![PathBuf::from(MACOS_SYSTEM_LAUNCHD_DIR).join(format!("{}.plist", service_name))];
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(MACOS_USER_LAUNCHD_SUBDIR).join(format!("{}.plist", service_name)));
+    }
+    paths
 }
 
 fn remove_path_best_effort(path: &Path) {

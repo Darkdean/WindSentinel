@@ -36,6 +36,10 @@
   - task acknowledgement lifecycle
   - helper-based stop/uninstall execution path
 
+## Current target focus
+- immediate agent target: macOS 26 on aarch64
+- future multi-platform goal remains tracked separately for macOS/Linux/Windows expansion
+
 ## Admin UI progress
 - Admin UI now includes:
   - control metadata loading

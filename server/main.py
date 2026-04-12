@@ -230,7 +230,7 @@ def ensure_agent_control_bootstrap(agent_id: str, created_by: str = "system"):
     current = get_agent_offline_code(agent_id)
     if current:
         return {
-            "service_name": "windsentinel-agent",
+            "service_name": default_agent_service_name(),
             "offline_code_hash": current["code_hash"],
             "offline_code_salt": current["code_salt"],
             "offline_code_version": current["code_version"],
@@ -240,11 +240,15 @@ def ensure_agent_control_bootstrap(agent_id: str, created_by: str = "system"):
     code_hash = hash_offline_authorization_code(offline_code, code_salt)
     upsert_agent_offline_code(agent_id, code_hash, code_salt, 1, "active", created_by)
     return {
-        "service_name": "windsentinel-agent",
+        "service_name": default_agent_service_name(),
         "offline_code_hash": code_hash,
         "offline_code_salt": code_salt,
         "offline_code_version": 1,
     }, offline_code
+
+
+def default_agent_service_name():
+    return "com.windsentinel.agent" if os.uname().sysname.lower() == "darwin" else "windsentinel-agent"
 
 
 def prepare_agent_config(config: Dict[str, Any], created_by: str = "system"):
@@ -269,15 +273,25 @@ def default_agent_config(request: Request):
         "agent_id": str(uuid.uuid4()),
         "server_url": server_url,
         "shared_key_b64": base64.b64encode(os.urandom(32)).decode(),
-        "control": AgentControlBootstrapPayload().model_dump(),
+        "control": AgentControlBootstrapPayload(service_name=default_agent_service_name()).model_dump(),
     }
 
 
 def agent_binary_path():
-    return os.getenv(
-        "WINDSENTINEL_AGENT_BINARY_PATH",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "target", "release", "WindSentinelAgent")),
-    )
+    override = os.getenv("WINDSENTINEL_AGENT_BINARY_PATH")
+    if override:
+        return override
+    base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "target"))
+    candidates = [
+        os.path.join(base, "release", "windsentinel_agent"),
+        os.path.join(base, "release", "WindSentinelAgent"),
+        os.path.join(base, "debug", "windsentinel_agent"),
+        os.path.join(base, "debug", "WindSentinelAgent"),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[0]
 
 
 def agent_version():
