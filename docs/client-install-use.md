@@ -27,6 +27,12 @@ M0 baseline skeleton. This document must be completed and kept in sync during im
 - `packaging/macos/com.windsentinel.agent.plist`
 - `packaging/macos/install_agent.sh`
 - `packaging/macos/uninstall_agent.sh`
+- `packaging/macos/build_pkg.sh`
+- `packaging/macos/scripts/preinstall`
+- `packaging/macos/scripts/postinstall`
+- `packaging/macos/build_pkg.sh`
+- `packaging/macos/scripts/preinstall`
+- `packaging/macos/scripts/postinstall`
 
 ### Intended install layout
 - binary: `/Library/WindSentinel/bin/windsentinel_agent`
@@ -43,7 +49,17 @@ The macOS install path now injects:
 
 This is required so the formally installed launchd service reads the installed signed config instead of falling back to the per-user debug path.
 
-### Basic install flow
+### Build a double-clickable pkg
+```bash
+packaging/macos/build_pkg.sh <agent-binary> <signed-config.json> [output-pkg]
+```
+
+### Build a double-clickable pkg
+```bash
+packaging/macos/build_pkg.sh <agent-binary> <signed-config.json> [output-pkg]
+```
+
+### Basic direct install flow
 ```bash
 sudo packaging/macos/install_agent.sh <agent-binary> <signed-config.json>
 ```
@@ -55,7 +71,7 @@ sudo packaging/macos/uninstall_agent.sh
 
 ### Notes
 - current formalization target is macOS 26 on aarch64
-- launchd packaging is now scaffolded, but a full installer-package workflow is still future work
+- pkg build output is now available for double-click installation through the macOS Installer GUI
 - local control commands and server-issued control tasks still rely on the configured control metadata in the signed config
 - formal stop/uninstall now depends on a detached helper process whose logs are written under `/Library/WindSentinel/logs/control-helper.log`
 - stop semantics now require the running agent to enter a stopped mode where business collection/upload halts and only control-heartbeat traffic remains

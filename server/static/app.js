@@ -7,6 +7,7 @@ let agentOffset = 0;
 let agentLimit = 200;
 let lastBatchFailed = [];
 let metaTimer = null;
+let selectedAgentIds = new Set();
 
 function api(path, options = {}) {
   const headers = options.headers || {};
@@ -457,6 +458,7 @@ async function loadAgents() {
   } else {
     currentAgent = null;
   }
+  renderAgentTable(data.items || []);
 }
 
 async function selectAgent() {
@@ -483,6 +485,72 @@ async function loadHealth() {
       unlock: null,
     }, null, 2);
   }
+}
+
+function renderAgentTable(items) {
+  const container = document.getElementById("agent-table");
+  if (!container) return;
+  const availableIds = new Set(items.map(item => item.agent_id));
+  selectedAgentIds = new Set(Array.from(selectedAgentIds).filter(id => availableIds.has(id)));
+  container.textContent = "";
+  const table = document.createElement("table");
+  table.style.width = "100%";
+  table.style.borderCollapse = "collapse";
+  const headers = ["选择", "Agent ID", "显示名", "分组", "标签", "期望状态", "实际状态", "最后心跳", "最后出现"];
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headers.forEach(text => {
+    const th = document.createElement("th");
+    th.style.border = "1px solid #334155";
+    th.style.padding = "6px";
+    th.style.textAlign = "left";
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  items.forEach(item => {
+    const tr = document.createElement("tr");
+    const cells = [];
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedAgentIds.has(item.agent_id);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) selectedAgentIds.add(item.agent_id);
+      else selectedAgentIds.delete(item.agent_id);
+    });
+    cells.push(checkbox);
+    cells.push(item.agent_id || "");
+    cells.push(item.display_name || "");
+    cells.push(item.group_name || "");
+    cells.push((item.tags || []).join(","));
+    cells.push(item.desired_state || "running");
+    cells.push(item.actual_state || "running");
+    cells.push(item.last_heartbeat_at ? formatAuditTs(item.last_heartbeat_at) : "");
+    cells.push(item.last_seen ? formatAuditTs(item.last_seen) : "");
+    cells.forEach((cell, idx) => {
+      const td = document.createElement("td");
+      td.style.border = "1px solid #334155";
+      td.style.padding = "6px";
+      if (idx === 0) td.appendChild(cell);
+      else td.textContent = String(cell);
+      tr.appendChild(td);
+    });
+    tr.addEventListener("click", event => {
+      if (event.target === checkbox) return;
+      currentAgent = item.agent_id;
+      const select = document.getElementById("agent-list");
+      if (select) select.value = item.agent_id;
+      loadHealth();
+      loadAgentProfile();
+      loadClientControlState();
+      loadClientControlTasks();
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
 
 async function loadGroups() {
@@ -737,6 +805,7 @@ function resetAgentFilter() {
   if (searchInput) searchInput.value = "";
   if (offsetInput) offsetInput.value = "0";
   if (limitInput) limitInput.value = "200";
+  selectedAgentIds.clear();
   loadAgents();
 }
 
@@ -860,6 +929,34 @@ async function createClientControlTask(taskType) {
   const data = await res.json();
   setClientControlStatus(data);
   await loadClientControlTasks();
+}
+
+async function createSelectedClientControlTasks(taskType) {
+  const statusEl = document.getElementById("agents-control-status");
+  const ids = Array.from(selectedAgentIds);
+  if (!ids.length) {
+    if (statusEl) statusEl.textContent = "请先选择至少一个客户端";
+    return;
+  }
+  const mfaCode = document.getElementById("agents-control-mfa")?.value || "";
+  const reason = document.getElementById("agents-control-reason")?.value || "";
+  const results = [];
+  for (const agentId of ids) {
+    const res = await api("/admin/agents/" + agentId + "/control/task", {
+      method: "POST",
+      body: JSON.stringify({ task_type: taskType, mfa_code: mfaCode, reason: reason || null })
+    });
+    const text = await res.text();
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+    results.push({ agent_id: agentId, status: res.status, body: payload });
+  }
+  if (statusEl) statusEl.textContent = JSON.stringify(results, null, 2);
+  await loadAgents();
 }
 
 async function runQuery() {

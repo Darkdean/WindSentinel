@@ -87,9 +87,6 @@ pub async fn sync_control_state(config: &AgentConfig) -> Result<()> {
 }
 
 pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
-    if is_stopped(config)? {
-        return Ok(());
-    }
     let client = reqwest::Client::new();
     let response = client
         .get(format!("{}/api/v1/control-tasks/next", config.server_url))
@@ -195,11 +192,21 @@ pub fn is_stopped(config: &AgentConfig) -> Result<bool> {
 pub async fn handle_cli(config: &AgentConfig, args: &[String]) -> Result<()> {
     if args.len() >= 3 && args[1] == "control" {
         let action = args[2].as_str();
+        let mut provided_code: Option<String> = None;
+        let mut idx = 3;
+        while idx < args.len() {
+            if args[idx] == "--code" && idx + 1 < args.len() {
+                provided_code = Some(args[idx + 1].clone());
+                idx += 2;
+                continue;
+            }
+            idx += 1;
+        }
         match action {
             "stop" | "uninstall" => {
                 sync_control_state(config).await.ok();
                 let state = load_control_state(config)?;
-                let code = prompt_for_code(action)?;
+                let code = provided_code.unwrap_or(prompt_for_code(action)?);
                 verify_offline_code(&state, &code)?;
                 let manifest = write_manifest(config, action, None, None)?;
                 spawn_helper(&manifest)?;
@@ -506,7 +513,7 @@ fn perform_stop(manifest: &ControlManifest) -> Result<String> {
 fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
     if cfg!(target_os = "macos")
         && requires_privileged_macos_cleanup(manifest)
-        && !is_running_as_root()
+        && (!is_running_as_root() || manifest.task_id.is_some())
     {
         run_macos_privileged_uninstall(manifest)?;
         return Ok("authorized uninstall completed".to_string());
@@ -594,14 +601,18 @@ fn launchd_plist_candidates(service_name: &str) -> Vec<PathBuf> {
 fn run_macos_privileged_uninstall(manifest: &ControlManifest) -> Result<()> {
     let script_path = write_privileged_cleanup_script(manifest)?;
     let command = format!("/bin/bash {}", shell_escape(&script_path.to_string_lossy()));
-    let status = Command::new("osascript")
-        .arg("-e")
-        .arg(format!(
-            "do shell script {} with administrator privileges",
-            apple_script_string(&command)
-        ))
-        .status()
-        .context("run privileged uninstall osascript")?;
+    let status = if manifest.task_id.is_some() {
+        run_console_user_osascript(&command)?
+    } else {
+        Command::new("osascript")
+            .arg("-e")
+            .arg(format!(
+                "do shell script {} with administrator privileges",
+                apple_script_string(&command)
+            ))
+            .status()
+            .context("run privileged uninstall osascript")?
+    };
     if !status.success() {
         return Err(anyhow!("privileged uninstall was not completed"));
     }
@@ -647,6 +658,37 @@ fn shell_escape(value: &str) -> String {
 fn apple_script_string(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{}\"", escaped)
+}
+
+fn run_console_user_osascript(command: &str) -> Result<std::process::ExitStatus> {
+    let output = Command::new("stat")
+        .args(["-f%Su", "/dev/console"])
+        .output()
+        .context("read console user")?;
+    let console_user = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if console_user.is_empty() || console_user == "root" {
+        return Command::new("osascript")
+            .arg("-e")
+            .arg(format!(
+                "do shell script {} with administrator privileges",
+                apple_script_string(command)
+            ))
+            .status()
+            .context("run privileged uninstall osascript");
+    }
+    let uid_output = Command::new("id")
+        .args(["-u", &console_user])
+        .output()
+        .context("read console user uid")?;
+    let uid = String::from_utf8_lossy(&uid_output.stdout).trim().to_string();
+    let wrapped = format!(
+        "do shell script {} with administrator privileges",
+        apple_script_string(command)
+    );
+    Command::new("launchctl")
+        .args(["asuser", &uid, "sudo", "-u", &console_user, "osascript", "-e", &wrapped])
+        .status()
+        .context("run console-user privileged uninstall osascript")
 }
 
 fn remove_path_best_effort(path: &Path) {

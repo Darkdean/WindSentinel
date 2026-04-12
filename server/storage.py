@@ -570,6 +570,9 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
                ap.notes,
                ap.group_id,
                ag.name as group_name,
+               ars.desired_state,
+               ars.actual_state,
+               ars.last_heartbeat_at,
                tags.tags as tags,
                tags.tag_ids as tag_ids
         from (
@@ -585,6 +588,7 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200):
         ) a
         left join agent_profiles ap on ap.agent_id = a.agent_id
         left join agent_groups ag on ag.id = ap.group_id
+        left join agent_runtime_state ars on ars.agent_id = a.agent_id
         left join (
             select m.agent_id, string_agg(t.name, ',' order by t.name) as tags, string_agg(t.id::text, ',' order by t.id) as tag_ids
             from agent_tag_map m join agent_tags t on t.id = m.tag_id
@@ -637,6 +641,9 @@ def get_agent_detail(agent_id):
                ap.notes,
                ap.group_id,
                ag.name as group_name,
+               ars.desired_state,
+               ars.actual_state,
+               ars.last_heartbeat_at,
                tags.tags as tags
         from (
             select agent_id, max(ts) as last_seen from (
@@ -651,6 +658,7 @@ def get_agent_detail(agent_id):
         ) a
         left join agent_profiles ap on ap.agent_id = a.agent_id
         left join agent_groups ag on ag.id = ap.group_id
+        left join agent_runtime_state ars on ars.agent_id = a.agent_id
         left join (
             select m.agent_id, string_agg(t.name, ',' order by t.name) as tags
             from agent_tag_map m join agent_tags t on t.id = m.tag_id

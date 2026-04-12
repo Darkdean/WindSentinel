@@ -29,4 +29,4 @@
 This document is a baseline map and must be expanded as implementation changes module boundaries.
 
 ## Packaging
-- `packaging/macos/` — launchd plist and install/uninstall scripts for the current macOS target
+- `packaging/macos/` — launchd plist, pkg build script, and install/uninstall assets for the current macOS target

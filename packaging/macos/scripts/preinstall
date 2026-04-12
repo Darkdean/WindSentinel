@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+launchctl bootout system /Library/LaunchDaemons/com.windsentinel.agent.plist >/dev/null 2>&1 || true
+launchctl unload /Library/LaunchDaemons/com.windsentinel.agent.plist >/dev/null 2>&1 || true

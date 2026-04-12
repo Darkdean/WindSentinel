@@ -54,3 +54,5 @@
 
 ## macOS formalization progress
 - macOS packaging formalization now includes launchd install/uninstall artifacts for the current target
+- macOS packaging now also includes a pkg build path and uninstall app bundle for GUI-driven install/uninstall
+- macOS packaging now also includes a pkg build path and uninstall app bundle for GUI-driven install/uninstall

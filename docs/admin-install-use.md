@@ -14,3 +14,4 @@ M0 baseline skeleton. Complete during admin/server implementation.
 - remote shell UI/routes/config surfaces are removed or hidden for V1
 - stop/uninstall admin workflow must enforce role permissions and MFA
 - stop/uninstall admin UI entry points now exist for loading control metadata, rotating offline codes, and issuing stop/uninstall tasks with MFA
+- client management now supports list-based selection and multi-select task issuance for stop/uninstall operations
