@@ -36,7 +36,8 @@ async fn main() -> Result<()> {
     let policy_clone = policy_state.clone();
     tokio::spawn(async move {
         loop {
-            if policy::is_enabled(&policy_clone, "process").await {
+            let stopped = control::is_stopped(&config_clone).unwrap_or(false);
+            if !stopped && policy::is_enabled(&policy_clone, "process").await {
                 if let Err(err) =
                     process::collect_process_events(&config_clone, &log_store_clone).await
                 {
@@ -47,7 +48,7 @@ async fn main() -> Result<()> {
                         .await;
                 }
             }
-            if policy::is_enabled(&policy_clone, "network").await {
+            if !stopped && policy::is_enabled(&policy_clone, "network").await {
                 if let Err(err) =
                     network::collect_network_events(&config_clone, &log_store_clone).await
                 {
@@ -58,7 +59,7 @@ async fn main() -> Result<()> {
                         .await;
                 }
             }
-            if policy::is_enabled(&policy_clone, "health").await {
+            if !stopped && policy::is_enabled(&policy_clone, "health").await {
                 if let Err(err) = health::collect_health(&config_clone, &log_store_clone).await {
                     let _ = log_store_clone
                         .lock()
@@ -77,35 +78,46 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             let _ = control::sync_control_state(&config_clone).await;
-            if let Err(err) = log_store_clone
-                .lock()
-                .await
-                .push_incremental(&config_clone)
-                .await
-            {
-                let _ = log_store_clone
-                    .lock()
-                    .await
-                    .append_record(LogRecord::error(RecordKind::Transport, err.to_string()))
-                    .await;
-            }
-            if policy::is_enabled(&policy_clone, "health").await {
-                if let Err(err) = health::push_health(&config_clone, &log_store_clone).await {
+            let stopped = control::is_stopped(&config_clone).unwrap_or(false);
+            if stopped {
+                if let Err(err) = control::heartbeat(&config_clone).await {
                     let _ = log_store_clone
                         .lock()
                         .await
-                        .append_record(LogRecord::error(RecordKind::Health, err.to_string()))
+                        .append_record(LogRecord::error(RecordKind::Control, err.to_string()))
                         .await;
                 }
-            }
-            if let Err(err) =
-                policy::fetch_and_apply(&config_clone, &policy_clone, &log_store_clone).await
-            {
-                let _ = log_store_clone
+            } else {
+                if let Err(err) = log_store_clone
                     .lock()
                     .await
-                    .append_record(LogRecord::error(RecordKind::Policy, err.to_string()))
-                    .await;
+                    .push_incremental(&config_clone)
+                    .await
+                {
+                    let _ = log_store_clone
+                        .lock()
+                        .await
+                        .append_record(LogRecord::error(RecordKind::Transport, err.to_string()))
+                        .await;
+                }
+                if policy::is_enabled(&policy_clone, "health").await {
+                    if let Err(err) = health::push_health(&config_clone, &log_store_clone).await {
+                        let _ = log_store_clone
+                            .lock()
+                            .await
+                            .append_record(LogRecord::error(RecordKind::Health, err.to_string()))
+                            .await;
+                    }
+                }
+                if let Err(err) =
+                    policy::fetch_and_apply(&config_clone, &policy_clone, &log_store_clone).await
+                {
+                    let _ = log_store_clone
+                        .lock()
+                        .await
+                        .append_record(LogRecord::error(RecordKind::Policy, err.to_string()))
+                        .await;
+                }
             }
             if let Err(err) = control::poll_control_tasks(&config_clone).await {
                 let _ = log_store_clone

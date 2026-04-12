@@ -20,12 +20,20 @@ const SYSTEMD_UNIT_DIRS: &[&str] = &[
 const MACOS_SYSTEM_LAUNCHD_DIR: &str = "/Library/LaunchDaemons";
 const MACOS_USER_LAUNCHD_SUBDIR: &str = "Library/LaunchAgents";
 
+fn default_running_state() -> String {
+    "running".to_string()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ControlState {
     pub service_name: String,
     pub offline_code_hash: String,
     pub offline_code_salt: String,
     pub offline_code_version: u32,
+    #[serde(default = "default_running_state")]
+    pub current_mode: String,
+    #[serde(default)]
+    pub last_heartbeat_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -78,6 +86,9 @@ pub async fn sync_control_state(config: &AgentConfig) -> Result<()> {
 }
 
 pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
+    if is_stopped(config)? {
+        return Ok(());
+    }
     let client = reqwest::Client::new();
     let response = client
         .get(format!("{}/api/v1/control-tasks/next", config.server_url))
@@ -101,6 +112,28 @@ pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
     )
     .await
     .ok();
+    if task.task_type == "stop" {
+        set_current_mode(config, "stopped")?;
+        ack_task(
+            config,
+            task.id,
+            "running",
+            Some("running"),
+            Some("agent entered stopped mode"),
+        )
+        .await
+        .ok();
+        ack_task(
+            config,
+            task.id,
+            "completed",
+            Some("ok"),
+            Some("authorized stop completed"),
+        )
+        .await
+        .ok();
+        return Ok(());
+    }
     let manifest = write_manifest(
         config,
         &task.task_type,
@@ -120,6 +153,42 @@ pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
         return Err(err);
     }
     std::process::exit(0);
+}
+
+pub async fn heartbeat(config: &AgentConfig) -> Result<()> {
+    let mut state = load_control_state(config)?;
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/v1/control/heartbeat", config.server_url))
+        .json(&serde_json::json!({
+            "agent_id": config.agent_id,
+            "actual_state": state.current_mode,
+        }))
+        .send()
+        .await
+        .context("send control heartbeat")?;
+    if !response.status().is_success() {
+        return Err(anyhow!("control heartbeat failed {}", response.status()));
+    }
+    let value: serde_json::Value = response.json().await.context("parse control heartbeat")?;
+    if let Some(runtime) = value.get("runtime") {
+        if runtime
+            .get("desired_state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("running")
+            == "running"
+            && state.current_mode == "stopped"
+        {
+            state.current_mode = default_running_state();
+        }
+        state.last_heartbeat_at = Some(chrono::Utc::now().timestamp());
+        write_control_state(&AgentConfig::control_state_path(), &state)?;
+    }
+    Ok(())
+}
+
+pub fn is_stopped(config: &AgentConfig) -> Result<bool> {
+    Ok(load_control_state(config)?.current_mode == "stopped")
 }
 
 pub async fn handle_cli(config: &AgentConfig, args: &[String]) -> Result<()> {
@@ -195,6 +264,8 @@ fn build_state_from_config(control: &ControlConfig) -> Option<ControlState> {
         offline_code_hash: control.offline_code_hash.clone()?,
         offline_code_salt: control.offline_code_salt.clone()?,
         offline_code_version: control.offline_code_version?,
+        current_mode: default_running_state(),
+        last_heartbeat_at: None,
     })
 }
 
@@ -226,6 +297,12 @@ fn write_control_state(path: &Path, state: &ControlState) -> Result<()> {
     let contents = serde_json::to_string_pretty(state).context("serialize control state")?;
     fs::write(path, contents).context("write control state")?;
     Ok(())
+}
+
+fn set_current_mode(config: &AgentConfig, mode: &str) -> Result<()> {
+    let mut state = load_control_state(config)?;
+    state.current_mode = mode.to_string();
+    write_control_state(&AgentConfig::control_state_path(), &state)
 }
 
 fn prompt_for_code(action: &str) -> Result<String> {
@@ -418,7 +495,7 @@ fn wait_for_pid_exit(pid: u32) {
 
 fn perform_stop(manifest: &ControlManifest) -> Result<String> {
     if cfg!(target_os = "macos") {
-        stop_launchd_service(&manifest.service_name);
+        terminate_agent_processes(&manifest.executable_path)?;
     } else {
         run_systemctl(&["stop", &manifest.service_name]);
     }
@@ -428,12 +505,14 @@ fn perform_stop(manifest: &ControlManifest) -> Result<String> {
 fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
     if cfg!(target_os = "macos") {
         stop_launchd_service(&manifest.service_name);
+        terminate_agent_processes(&manifest.executable_path)?;
         for path in launchd_plist_candidates(&manifest.service_name) {
             remove_path_best_effort(&path);
         }
     } else {
         run_systemctl(&["stop", &manifest.service_name]);
         run_systemctl(&["disable", &manifest.service_name]);
+        terminate_agent_processes(&manifest.executable_path)?;
         for dir in SYSTEMD_UNIT_DIRS {
             let path = PathBuf::from(dir).join(format!("{}.service", manifest.service_name));
             remove_path_best_effort(&path);
@@ -442,11 +521,15 @@ fn perform_uninstall(manifest: &ControlManifest) -> Result<String> {
         run_systemctl(&["reset-failed", &manifest.service_name]);
     }
 
+    let _ = std::env::set_current_dir("/tmp");
     remove_path_best_effort(Path::new(&manifest.log_path));
     remove_path_best_effort(Path::new(&manifest.control_state_path));
     remove_path_best_effort(Path::new(&manifest.config_path));
     remove_path_best_effort(Path::new(&manifest.executable_path));
     remove_path_best_effort(Path::new(&manifest.state_dir));
+    if let Some(root_dir) = Path::new(&manifest.state_dir).parent() {
+        remove_path_best_effort(root_dir);
+    }
     Ok("authorized uninstall completed".to_string())
 }
 
@@ -464,13 +547,12 @@ fn default_service_name() -> String {
 
 fn stop_launchd_service(service_name: &str) {
     let _ = Command::new("launchctl")
-        .args(["bootout", &format!("system/{}", service_name)])
+        .args([
+            "bootout",
+            "system",
+            &format!("{}/{}.plist", MACOS_SYSTEM_LAUNCHD_DIR, service_name),
+        ])
         .status();
-    if let Ok(uid) = std::env::var("UID") {
-        let _ = Command::new("launchctl")
-            .args(["bootout", &format!("gui/{}/{}", uid, service_name)])
-            .status();
-    }
     for path in launchd_plist_candidates(service_name) {
         let _ = Command::new("launchctl")
             .args(["unload", path.to_string_lossy().as_ref()])
@@ -499,6 +581,59 @@ fn remove_path_best_effort(path: &Path) {
 
 fn cleanup_manifest_file(manifest: &ControlManifest) {
     let _ = fs::remove_file(&manifest.manifest_path);
+}
+
+fn terminate_agent_processes(executable_path: &str) -> Result<()> {
+    let self_pid = std::process::id();
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,command="])
+        .output()
+        .context("list agent processes")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pids = Vec::new();
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut parts = trimmed.splitn(2, ' ');
+        let Some(pid_str) = parts.next() else { continue };
+        let command = parts.next().unwrap_or("");
+        let Ok(pid) = pid_str.trim().parse::<u32>() else { continue };
+        if pid == self_pid {
+            continue;
+        }
+        if command.contains(executable_path) || command.contains("windsentinel_agent") {
+            pids.push(pid);
+        }
+    }
+    for pid in &pids {
+        unsafe {
+            libc::kill(*pid as i32, libc::SIGTERM);
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    for pid in &pids {
+        if process_exists(*pid) {
+            unsafe {
+                libc::kill(*pid as i32, libc::SIGKILL);
+            }
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let survivors: Vec<u32> = pids.into_iter().filter(|pid| process_exists(*pid)).collect();
+    if !survivors.is_empty() {
+        return Err(anyhow!("agent processes still running: {:?}", survivors));
+    }
+    Ok(())
+}
+
+fn process_exists(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 fn helper_log_path(manifest: &ControlManifest) -> PathBuf {

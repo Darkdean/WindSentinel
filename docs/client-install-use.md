@@ -58,3 +58,5 @@ sudo packaging/macos/uninstall_agent.sh
 - launchd packaging is now scaffolded, but a full installer-package workflow is still future work
 - local control commands and server-issued control tasks still rely on the configured control metadata in the signed config
 - formal stop/uninstall now depends on a detached helper process whose logs are written under `/Library/WindSentinel/logs/control-helper.log`
+- stop semantics now require the running agent to enter a stopped mode where business collection/upload halts and only control-heartbeat traffic remains
+- uninstall semantics now require killing all agent processes before cleanup, with the goal of no remaining process and no remaining WindSentinel-owned data

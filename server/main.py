@@ -71,6 +71,7 @@ from storage import (
     get_logs_sql,
     get_agent_detail,
     get_agent_offline_code,
+    get_agent_runtime_state,
     get_next_agent_control_task,
     get_policy,
     get_user_mfa as get_user_mfa_secret,
@@ -119,6 +120,8 @@ from storage import (
     store_health,
     store_log,
     update_agent_control_task_status,
+    upsert_agent_runtime_state,
+    mark_agent_heartbeat,
     upsert_agent_offline_code,
     upsert_agent_profile,
     update_api_endpoint_last_used,
@@ -1513,6 +1516,22 @@ async def list_control_tasks(agent_id: str, request: Request, limit: int = 50, u
     return {"items": items, "correlation_id": correlation_id}
 
 
+@app.get("/admin/agents/{agent_id}/control/runtime-state")
+async def get_control_runtime_state(agent_id: str, request: Request, user=Depends(require_auth)):
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+    state = get_agent_runtime_state(agent_id) or {
+        "agent_id": agent_id,
+        "desired_state": "running",
+        "actual_state": "running",
+        "reason": None,
+        "updated_at": None,
+        "last_heartbeat_at": None,
+    }
+    audit_client_control(user, "client_control_runtime_state_read", request, agent_id, "ok", correlation_id)
+    return {**state, "correlation_id": correlation_id}
+
+
 @app.post("/admin/agents/{agent_id}/control/task")
 async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, request: Request, user=Depends(require_auth)):
     correlation_id = str(uuid.uuid4())
@@ -1538,6 +1557,10 @@ async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, 
         expires_at=expires_at,
         audit_correlation_id=correlation_id,
     )
+    if task_type == "stop":
+        upsert_agent_runtime_state(agent_id, "stopped", "running", payload.reason)
+    elif task_type == "uninstall":
+        upsert_agent_runtime_state(agent_id, "uninstalling", "running", payload.reason)
     audit_client_control(user, f"client_{task_type}_task_created", request, agent_id, "ok", correlation_id)
     return {
         "status": "ok",
@@ -1556,12 +1579,22 @@ async def offline_code_meta(agent_id: str):
         return {"control": None}
     return {
         "control": {
-            "service_name": "windsentinel-agent",
+            "service_name": default_agent_service_name(),
             "offline_code_hash": data["code_hash"],
             "offline_code_salt": data["code_salt"],
             "offline_code_version": data["code_version"],
         }
     }
+
+
+@app.post("/api/v1/control/heartbeat")
+async def control_heartbeat(payload: Dict[str, Any]):
+    agent_id = payload.get("agent_id")
+    actual_state = str(payload.get("actual_state") or "running")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="missing agent_id")
+    state = mark_agent_heartbeat(agent_id, actual_state)
+    return {"runtime": state}
 
 
 @app.get("/api/v1/control-tasks/next")
@@ -1599,6 +1632,14 @@ async def ack_control_task(task_id: int, payload: AgentControlTaskAckPayload):
         auth_type="token",
         correlation_id=correlation_id,
     )
+    if task["task_type"] == "stop":
+        desired = "stopped"
+        actual = "stopped" if status == "completed" else "running"
+        upsert_agent_runtime_state(task["agent_id"], desired, actual, task["payload"].get("reason"))
+    elif task["task_type"] == "uninstall":
+        desired = "uninstalled"
+        actual = "uninstalled" if status == "completed" else "running"
+        upsert_agent_runtime_state(task["agent_id"], desired, actual, task["payload"].get("reason"))
     return {"status": "ok", "task": task}
 
 

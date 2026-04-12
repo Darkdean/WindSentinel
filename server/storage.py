@@ -286,6 +286,18 @@ def init_db():
         )
         """
     )
+    cur.execute(
+        """
+        create table if not exists agent_runtime_state (
+            agent_id text primary key,
+            desired_state text not null,
+            actual_state text not null,
+            reason text,
+            updated_at integer not null,
+            last_heartbeat_at integer
+        )
+        """
+    )
     conn.commit()
     ensure_audit_columns(conn)
     ensure_log_export_columns(conn)
@@ -1153,6 +1165,71 @@ def update_agent_control_task_status(task_id, status, result_code=None, result_m
     data = dict(row)
     data["payload"] = json.loads(data["payload"])
     return data
+
+
+def upsert_agent_runtime_state(agent_id, desired_state, actual_state, reason=None, last_heartbeat_at=None):
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        insert into agent_runtime_state (agent_id, desired_state, actual_state, reason, updated_at, last_heartbeat_at)
+        values (?, ?, ?, ?, ?, ?)
+        on conflict(agent_id) do update set
+            desired_state = excluded.desired_state,
+            actual_state = excluded.actual_state,
+            reason = excluded.reason,
+            updated_at = excluded.updated_at,
+            last_heartbeat_at = excluded.last_heartbeat_at
+        """,
+        (agent_id, desired_state, actual_state, reason, now, last_heartbeat_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_agent_runtime_state(agent_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "select agent_id, desired_state, actual_state, reason, updated_at, last_heartbeat_at from agent_runtime_state where agent_id = ?",
+        (agent_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_agent_heartbeat(agent_id, actual_state):
+    current = get_agent_runtime_state(agent_id)
+    desired_state = (current or {}).get("desired_state") or "running"
+    reason = (current or {}).get("reason")
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        insert into agent_runtime_state (agent_id, desired_state, actual_state, reason, updated_at, last_heartbeat_at)
+        values (?, ?, ?, ?, ?, ?)
+        on conflict(agent_id) do update set
+            desired_state = excluded.desired_state,
+            actual_state = excluded.actual_state,
+            reason = excluded.reason,
+            updated_at = excluded.updated_at,
+            last_heartbeat_at = excluded.last_heartbeat_at
+        """,
+        (agent_id, desired_state, actual_state, reason, now, now),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "agent_id": agent_id,
+        "desired_state": desired_state,
+        "actual_state": actual_state,
+        "reason": reason,
+        "updated_at": now,
+        "last_heartbeat_at": now,
+    }
 
 
 def create_api_endpoint(name, alias, role, functions, key_hash, created_by):

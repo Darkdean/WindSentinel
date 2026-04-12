@@ -20,6 +20,8 @@
 - stop/uninstall authorization via unique offline client code
 - server-issued uninstall task with self-uninstall and cleanup
 - RBAC + MFA + audit coverage for admin-issued stop/uninstall actions
+- stop mode must suppress business telemetry/log uploads and leave only control-heartbeat traffic
+- uninstall must terminate all agent processes before cleanup and leave no WindSentinel-owned process/data residue on the host
 
 ## Server foundation progress
 - Server-side foundation for stop/uninstall now includes:
