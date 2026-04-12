@@ -30,9 +30,6 @@ M0 baseline skeleton. This document must be completed and kept in sync during im
 - `packaging/macos/build_pkg.sh`
 - `packaging/macos/scripts/preinstall`
 - `packaging/macos/scripts/postinstall`
-- `packaging/macos/build_pkg.sh`
-- `packaging/macos/scripts/preinstall`
-- `packaging/macos/scripts/postinstall`
 
 ### Intended install layout
 - binary: `/Library/WindSentinel/bin/windsentinel_agent`
@@ -54,10 +51,12 @@ This is required so the formally installed launchd service reads the installed s
 packaging/macos/build_pkg.sh <agent-binary> <signed-config.json> [output-pkg]
 ```
 
-### Build a double-clickable pkg
-```bash
-packaging/macos/build_pkg.sh <agent-binary> <signed-config.json> [output-pkg]
+If `output-pkg` is omitted, the default output path is:
+```text
+installPack/macos/26/aarch64/WindSentinel-Agent.pkg
 ```
+
+The script will automatically create the corresponding `installPack/<os>/<version>/<arch>/` directory when it does not already exist.
 
 ### Basic direct install flow
 ```bash

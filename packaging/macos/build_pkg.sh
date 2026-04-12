@@ -8,7 +8,6 @@ fi
 
 AGENT_SRC="$1"
 CONFIG_SRC="$2"
-OUTPUT_PKG="${3:-$(pwd)/dist/WindSentinel-Agent.pkg}"
 VERSION="${WINDSENTINEL_PKG_VERSION:-$(cat VERSION 2>/dev/null || echo v1.0)}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKDIR="$(mktemp -d /tmp/windsentinel-pkg.XXXXXX)"
@@ -18,6 +17,17 @@ APP_DIR="$ROOT/Applications/WindSentinel Uninstall.app"
 UNINSTALL_EXE="$APP_DIR/Contents/MacOS/WindSentinel Uninstall"
 INFO_PLIST="$APP_DIR/Contents/Info.plist"
 LAUNCHD_DST="$ROOT/Library/LaunchDaemons/com.windsentinel.agent.plist"
+TARGET_OS="macos"
+TARGET_VERSION="${WINDSENTINEL_TARGET_VERSION:-$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)}"
+RAW_ARCH="${WINDSENTINEL_TARGET_ARCH:-$(uname -m)}"
+case "$RAW_ARCH" in
+  arm64) TARGET_ARCH="aarch64" ;;
+  aarch64) TARGET_ARCH="aarch64" ;;
+  i386) TARGET_ARCH="x86_64" ;;
+  x86_64) TARGET_ARCH="x86_64" ;;
+  *) TARGET_ARCH="$RAW_ARCH" ;;
+esac
+OUTPUT_PKG="${3:-$(pwd)/installPack/${TARGET_OS}/${TARGET_VERSION}/${TARGET_ARCH}/WindSentinel-Agent.pkg}"
 VERIFY_KEY_B64="$(python3 - <<'PY' "$CONFIG_SRC"
 import json, sys
 from pathlib import Path
