@@ -150,6 +150,15 @@ pub async fn poll_control_tasks(config: &AgentConfig) -> Result<()> {
         .ok();
         return Ok(());
     }
+    if task.task_type == "activate" {
+        set_current_mode(config, "running")?;
+        append_runtime_log(config, "resumed to running mode");
+        ack_task(config, task.id, "running", Some("running"), Some("agent entered running mode"))
+        .await.ok();
+        ack_task(config, task.id, "completed", Some("ok"), Some("authorized activate completed"))
+        .await.ok();
+        return Ok(());
+    }
     let manifest = write_manifest(
         config,
         &task.task_type,

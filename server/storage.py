@@ -303,6 +303,8 @@ def init_db():
     ensure_log_export_columns(conn)
     ensure_login_blacklist_columns(conn)
     ensure_login_whitelist_columns(conn)
+    ensure_agent_profiles_columns(conn)
+    ensure_agent_offline_codes_columns(conn)
     ensure_default_admin(conn)
     conn.close()
 
@@ -346,6 +348,22 @@ def ensure_login_whitelist_columns(conn):
     cur = conn.cursor()
     cur.execute("alter table login_whitelist add column if not exists ip_list text")
     cur.execute("alter table login_whitelist add column if not exists updated_at integer not null default 0")
+    conn.commit()
+
+
+def ensure_agent_profiles_columns(conn):
+    """扩展 agent_profiles 表，添加硬件信息字段"""
+    cur = conn.cursor()
+    cur.execute("alter table agent_profiles add column if not exists computer_name text")
+    cur.execute("alter table agent_profiles add column if not exists system_serial text")
+    cur.execute("alter table agent_profiles add column if not exists board_serial text")
+    conn.commit()
+
+
+def ensure_agent_offline_codes_columns(conn):
+    """扩展 agent_offline_codes 表，添加加密离线卸载码字段"""
+    cur = conn.cursor()
+    cur.execute("alter table agent_offline_codes add column if not exists offline_uninstall_code_encrypted text")
     conn.commit()
 
 
@@ -569,6 +587,9 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200, include
                ap.display_name,
                ap.notes,
                ap.group_id,
+               ap.computer_name,
+               ap.system_serial,
+               ap.board_serial,
                ag.name as group_name,
                ars.desired_state,
                ars.actual_state,
@@ -630,6 +651,9 @@ def list_agents(group_id=None, tag_id=None, q=None, offset=0, limit=200, include
                     str(data.get("display_name") or ""),
                     str(data.get("notes") or ""),
                     str(data.get("group_name") or ""),
+                    str(data.get("computer_name") or ""),
+                    str(data.get("system_serial") or ""),
+                    str(data.get("board_serial") or ""),
                     ",".join(data.get("tags") or []),
                 ]
             ).lower()
@@ -748,20 +772,23 @@ def cleanup_inactive_agent_records(inactive_after_seconds=1800):
     return agent_ids
 
 
-def upsert_agent_profile(agent_id, display_name=None, notes=None, group_id=None):
+def upsert_agent_profile(agent_id, display_name=None, notes=None, group_id=None, computer_name=None, system_serial=None, board_serial=None):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
         """
-        insert into agent_profiles (agent_id, display_name, notes, group_id, updated_at)
-        values (?, ?, ?, ?, ?)
+        insert into agent_profiles (agent_id, display_name, notes, group_id, computer_name, system_serial, board_serial, updated_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
         on conflict(agent_id) do update set
             display_name=excluded.display_name,
             notes=excluded.notes,
             group_id=excluded.group_id,
+            computer_name=coalesce(excluded.computer_name, agent_profiles.computer_name),
+            system_serial=coalesce(excluded.system_serial, agent_profiles.system_serial),
+            board_serial=coalesce(excluded.board_serial, agent_profiles.board_serial),
             updated_at=excluded.updated_at
         """,
-        (agent_id, display_name, notes, group_id, int(time.time())),
+        (agent_id, display_name, notes, group_id, computer_name, system_serial, board_serial, int(time.time())),
     )
     conn.commit()
     conn.close()
@@ -1084,6 +1111,38 @@ def upsert_agent_offline_code(agent_id, code_hash, code_salt, code_version, stat
     )
     conn.commit()
     conn.close()
+
+
+def upsert_offline_uninstall_code(agent_id, offline_uninstall_code_encrypted):
+    """存储加密的离线卸载码"""
+    now = int(time.time())
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        insert into agent_offline_codes (agent_id, code_hash, code_salt, code_version, status, created_at, offline_uninstall_code_encrypted)
+        values (?, ?, ?, ?, ?, ?, ?)
+        on conflict(agent_id) do update set
+            offline_uninstall_code_encrypted=excluded.offline_uninstall_code_encrypted,
+            created_at=excluded.created_at
+        """,
+        (agent_id, "", "", 1, "active", now, offline_uninstall_code_encrypted),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_offline_uninstall_code(agent_id):
+    """获取加密的离线卸载码"""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "select agent_id, offline_uninstall_code_encrypted from agent_offline_codes where agent_id = ?",
+        (agent_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_agent_offline_code(agent_id):

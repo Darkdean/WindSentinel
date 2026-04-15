@@ -12,6 +12,8 @@ window.pageInits["agent_manage"] = async function () {
   bind("btn-control-code-rotate", "click", rotateOfflineAuthorizationCode);
   bind("btn-control-stop", "click", () => createClientControlTask("stop"));
   bind("btn-control-uninstall", "click", () => createClientControlTask("uninstall"));
+  bind("btn-control-activate", "click", () => createClientControlTask("activate"));
+  bind("btn-control-offline-uninstall-code", "click", getOfflineUninstallCode);
   await loadGroups();
   await loadTags();
   await loadAgentManageList();

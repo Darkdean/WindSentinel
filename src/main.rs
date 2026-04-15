@@ -12,6 +12,7 @@ mod log_store;
 mod network;
 mod policy;
 mod process;
+mod system_info;
 mod types;
 
 use config::AgentConfig;

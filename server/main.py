@@ -75,6 +75,7 @@ from storage import (
     get_agent_offline_code,
     get_agent_runtime_state,
     get_next_agent_control_task,
+    get_offline_uninstall_code,
     get_policy,
     get_user_mfa as get_user_mfa_secret,
     get_latest_health,
@@ -117,6 +118,8 @@ from storage import (
     purge_logs_by_size,
     set_policy,
     set_agent_tags,
+    upsert_agent_profile,
+    upsert_offline_uninstall_code,
     set_user_mfa,
     set_user_password,
     store_health,
@@ -129,6 +132,7 @@ from storage import (
     update_api_endpoint_last_used,
     verify_user,
 )
+from crypto import decrypt_offline_uninstall_code
 
 app = FastAPI()
 logger = logging.getLogger("windsentinel")
@@ -721,6 +725,26 @@ async def health(payload: HealthPayload):
     decrypted = aesgcm_decrypt(SHARED_KEY, data)
     report = json.loads(decrypted.decode())
     store_health(payload.agent_id, report)
+
+    # 处理硬件信息和离线卸载码
+    computer_name = report.get("computer_name")
+    system_serial = report.get("system_serial")
+    board_serial = report.get("board_serial")
+    offline_uninstall_code_encrypted = report.get("offline_uninstall_code_encrypted")
+
+    # 更新 agent_profiles 硬件信息
+    if computer_name or system_serial or board_serial:
+        upsert_agent_profile(
+            payload.agent_id,
+            computer_name=computer_name,
+            system_serial=system_serial,
+            board_serial=board_serial,
+        )
+
+    # 存储加密的离线卸载码
+    if offline_uninstall_code_encrypted:
+        upsert_offline_uninstall_code(payload.agent_id, offline_uninstall_code_encrypted)
+
     asyncio.create_task(dispatch_log_exports(payload.agent_id, report, "health"))
     return {"status": "ok"}
 
@@ -1526,6 +1550,51 @@ async def rotate_agent_offline_code(agent_id: str, payload: OfflineCodeRotateReq
     }
 
 
+@app.get("/admin/agents/{agent_id}/control/offline-uninstall-code")
+async def get_offline_uninstall_code_api(agent_id: str, request: Request, user=Depends(require_auth)):
+    """获取解密后的离线卸载码（需要 MFA 验证）"""
+    correlation_id = str(uuid.uuid4())
+    require_client_control_permission(user, request, agent_id, correlation_id)
+
+    # 检查 MFA 是否已绑定
+    try:
+        secret = get_user_mfa_secret(user["username"])
+    except HTTPException:
+        audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "mfa_not_bound", correlation_id)
+        raise HTTPException(status_code=400, detail="请先绑定MFA")
+
+    if not secret:
+        audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "mfa_not_bound", correlation_id)
+        raise HTTPException(status_code=400, detail="请先绑定MFA")
+
+    # 从查询参数获取 MFA 验证码
+    mfa_code = request.query_params.get("mfa_code", "")
+    if not mfa_code or not pyotp.TOTP(secret).verify(mfa_code):
+        audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "invalid_mfa", correlation_id)
+        raise HTTPException(status_code=401, detail="验证码错误")
+
+    # 获取加密的离线卸载码
+    data = get_offline_uninstall_code(agent_id)
+    if not data or not data.get("offline_uninstall_code_encrypted"):
+        audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "not_found", correlation_id)
+        raise HTTPException(status_code=404, detail="未找到离线卸载码")
+
+    # 解密离线卸载码
+    encrypted_code = data["offline_uninstall_code_encrypted"]
+    try:
+        offline_code = decrypt_offline_uninstall_code(encrypted_code, SHARED_KEY_B64)
+    except Exception as e:
+        audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "decrypt_failed", correlation_id)
+        raise HTTPException(status_code=500, detail="解密失败")
+
+    audit_client_control(user, "offline_uninstall_code_read", request, agent_id, "ok", correlation_id)
+    return {
+        "agent_id": agent_id,
+        "offline_uninstall_code": offline_code,
+        "correlation_id": correlation_id,
+    }
+
+
 @app.get("/admin/agents/{agent_id}/control/tasks")
 async def list_control_tasks(agent_id: str, request: Request, limit: int = 50, user=Depends(require_auth)):
     correlation_id = str(uuid.uuid4())
@@ -1557,8 +1626,8 @@ async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, 
     require_client_control_permission(user, request, agent_id, correlation_id)
     require_client_control_mfa(user, request, agent_id, payload.mfa_code, correlation_id)
     task_type = (payload.task_type or "").strip().lower()
-    if task_type not in {"stop", "uninstall"}:
-        raise HTTPException(status_code=400, detail="invalid task_type")
+    if task_type not in {"stop", "uninstall", "activate"}:
+        raise HTTPException(status_code=400, detail="invalid task_type. must be stop, uninstall, or activate")
     expires_in_seconds = max(60, min(int(payload.expires_in_seconds or 86400), 7 * 86400))
     expires_at = int(time.time()) + expires_in_seconds
     task_payload = {
@@ -1580,6 +1649,8 @@ async def create_control_task(agent_id: str, payload: ClientControlTaskRequest, 
         upsert_agent_runtime_state(agent_id, "stopped", "running", payload.reason)
     elif task_type == "uninstall":
         upsert_agent_runtime_state(agent_id, "uninstalling", "running", payload.reason)
+    elif task_type == "activate":
+        upsert_agent_runtime_state(agent_id, "running", "running", payload.reason)
     audit_client_control(user, f"client_{task_type}_task_created", request, agent_id, "ok", correlation_id)
     return {
         "status": "ok",
@@ -1658,6 +1729,10 @@ async def ack_control_task(task_id: int, payload: AgentControlTaskAckPayload):
     elif task["task_type"] == "uninstall":
         desired = "uninstalled"
         actual = "uninstalled" if status == "completed" else "running"
+        upsert_agent_runtime_state(task["agent_id"], desired, actual, task["payload"].get("reason"))
+    elif task["task_type"] == "activate":
+        desired = "running"
+        actual = "running" if status == "completed" else "stopped"
         upsert_agent_runtime_state(task["agent_id"], desired, actual, task["payload"].get("reason"))
     return {"status": "ok", "task": task}
 

@@ -26,6 +26,11 @@ impl LogStore {
         LogStore { path, session, offset: 0 }
     }
 
+    /// 获取加密会话的引用
+    pub fn session(&self) -> &SessionCrypto {
+        &self.session
+    }
+
     pub fn encrypt_payload(&self, data: &[u8]) -> Result<Vec<u8>> {
         self.session.encrypt(data)
     }

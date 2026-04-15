@@ -3,6 +3,8 @@ h1 { margin-bottom: 8px; }
 section { background: #111827; padding: 16px; margin-bottom: 16px; border-radius: 8px; }
 input, textarea, select, button { width: 100%; margin: 6px 0; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
 button { cursor: pointer; background: #1d4ed8; border: none; }
+button:hover { background: #2563eb; }
+button:disabled { background: #374151; cursor: not-allowed; }
 pre { background: #0b1220; padding: 10px; border-radius: 6px; overflow: auto; }
 canvas { width: 100%; background: #0b1220; border-radius: 6px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -24,3 +26,27 @@ canvas { width: 100%; background: #0b1220; border-radius: 6px; }
 }
 .toast { position: fixed; bottom: 24px; right: 24px; background: rgba(15, 23, 42, 0.95); color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; opacity: 0; transform: translateY(6px); transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none; }
 .toast.show { opacity: 1; transform: translateY(0); }
+/* Status badges */
+.status-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.status-running { background: #22c55e; color: #fff; }
+.status-stopped { background: #eab308; color: #fff; }
+.status-uninstalled { background: #6b7280; color: #fff; }
+.status-inactive { background: #ef4444; color: #fff; }
+/* Data table */
+.data-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.data-table th, .data-table td { padding: 8px 12px; border: 1px solid #334155; text-align: left; }
+.data-table th { background: #1e293b; font-weight: 500; }
+.data-table tr:hover { background: #1f2937; }
+.data-table td.selected { background: #1d4ed8; }
+/* Modal dialog */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-overlay.show { display: flex; }
+.modal-dialog { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; }
+.modal-title { font-size: 18px; margin-bottom: 16px; }
+.modal-input { margin-bottom: 12px; }
+.modal-buttons { display: flex; gap: 8px; margin-top: 16px; }
+.modal-buttons button { flex: 1; }
+.btn-cancel { background: #374151; }
+.btn-cancel:hover { background: #4b5563; }
+.btn-confirm { background: #1d4ed8; }
+.btn-confirm:hover { background: #2563eb; }

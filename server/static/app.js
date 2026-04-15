@@ -23,6 +23,92 @@ function bind(id, event, handler) {
   if (el) el.addEventListener(event, handler);
 }
 
+// ==================== MFA 弹出对话框 ====================
+
+let mfaDialogResolve = null;
+
+function createMfaDialog() {
+  // 检查是否已存在
+  if (document.getElementById("mfa-modal-overlay")) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "mfa-modal-overlay";
+  overlay.className = "modal-overlay";
+
+  overlay.innerHTML = `
+    <div class="modal-dialog">
+      <div class="modal-title">MFA 验证</div>
+      <p style="margin-bottom: 12px; color: #94a3b8;">请输入 6 位动态验证码以确认操作</p>
+      <input id="mfa-modal-input" type="text" placeholder="验证码" maxlength="6" class="modal-input" autocomplete="off"/>
+      <div id="mfa-modal-error" style="color: #ef4444; font-size: 14px; margin-bottom: 8px;"></div>
+      <div class="modal-buttons">
+        <button id="mfa-modal-cancel" class="btn-cancel">取消</button>
+        <button id="mfa-modal-confirm" class="btn-confirm">确认</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // 绑定事件
+  const cancelBtn = document.getElementById("mfa-modal-cancel");
+  const confirmBtn = document.getElementById("mfa-modal-confirm");
+  const input = document.getElementById("mfa-modal-input");
+
+  cancelBtn.addEventListener("click", () => {
+    hideMfaDialog(false);
+  });
+
+  confirmBtn.addEventListener("click", () => {
+    const code = input.value.trim();
+    if (code.length === 6) {
+      hideMfaDialog(true, code);
+    } else {
+      document.getElementById("mfa-modal-error").textContent = "请输入6位验证码";
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      confirmBtn.click();
+    } else if (e.key === "Escape") {
+      hideMfaDialog(false);
+    }
+  });
+}
+
+function showMfaDialog(operationName) {
+  return new Promise((resolve) => {
+    createMfaDialog();
+    mfaDialogResolve = resolve;
+
+    const overlay = document.getElementById("mfa-modal-overlay");
+    const title = overlay.querySelector(".modal-title");
+    const input = document.getElementById("mfa-modal-input");
+    const error = document.getElementById("mfa-modal-error");
+
+    title.textContent = `MFA 验证 - ${operationName}`;
+    input.value = "";
+    error.textContent = "";
+    overlay.classList.add("show");
+    input.focus();
+  });
+}
+
+function hideMfaDialog(success, code = null) {
+  const overlay = document.getElementById("mfa-modal-overlay");
+  if (overlay) {
+    overlay.classList.remove("show");
+  }
+
+  if (mfaDialogResolve) {
+    mfaDialogResolve(success ? code : null);
+    mfaDialogResolve = null;
+  }
+}
+
+// ==================== 原有绑定 ====================
+
 bind("btn-login", "click", login);
 bind("btn-bind-mfa", "click", bindMfa);
 bind("btn-verify-mfa", "click", verifyMfa);
@@ -429,6 +515,71 @@ async function changePassword() {
   }
 }
 
+// ==================== 表格渲染 ====================
+
+function renderAgentsTable(items) {
+  const tbody = document.getElementById("agent-table-body");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  items.forEach(item => {
+    const tr = document.createElement("tr");
+    if (selectedAgentIds.has(item.agent_id)) {
+      tr.classList.add("selected");
+    }
+
+    // 状态徽章
+    const state = item.actual_state || "running";
+    let statusClass = "status-running";
+    let statusText = "运行中";
+    if (state === "stopped") {
+      statusClass = "status-stopped";
+      statusText = "已停止";
+    } else if (state === "uninstalled") {
+      statusClass = "status-uninstalled";
+      statusText = "已卸载";
+    } else if (item.is_inactive) {
+      statusClass = "status-inactive";
+      statusText = "已过期";
+    }
+
+    // 最后心跳时间
+    const lastHeartbeat = item.last_heartbeat_at || item.last_seen;
+    let heartbeatText = "无";
+    if (lastHeartbeat) {
+      const diff = Math.floor((Date.now() / 1000) - lastHeartbeat);
+      if (diff < 60) heartbeatText = diff + "秒前";
+      else if (diff < 3600) heartbeatText = Math.floor(diff / 60) + "分钟前";
+      else heartbeatText = Math.floor(diff / 3600) + "小时前";
+    }
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="agent-checkbox" data-id="${item.agent_id}" ${selectedAgentIds.has(item.agent_id) ? 'checked' : ''}/></td>
+      <td style="font-size:12px;">${item.agent_id.substring(0, 8)}...</td>
+      <td>${item.computer_name || '-'}</td>
+      <td style="font-size:12px;">${item.system_serial ? item.system_serial.substring(0, 12) + '...' : '-'}</td>
+      <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+      <td>${heartbeatText}</td>
+    `;
+
+    // 绑定复选框事件
+    const checkbox = tr.querySelector(".agent-checkbox");
+    checkbox.addEventListener("change", (e) => {
+      const id = e.target.dataset.id;
+      if (e.target.checked) {
+        selectedAgentIds.add(id);
+        tr.classList.add("selected");
+      } else {
+        selectedAgentIds.delete(id);
+        tr.classList.remove("selected");
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+// ==================== 原有 loadAgents ====================
 async function loadAgents() {
   const params = new URLSearchParams();
   if (agentGroupFilter) params.set("group_id", agentGroupFilter);
@@ -451,6 +602,10 @@ async function loadAgents() {
     opt.textContent = item.agent_id + " (" + name + ", " + group + ")";
     select.appendChild(opt);
   });
+
+  // 渲染表格
+  renderAgentsTable(data.items || []);
+
   if ((data.items || []).length > 0) {
     currentAgent = select.value;
     await loadHealth();
@@ -926,7 +1081,13 @@ async function rotateOfflineAuthorizationCode() {
     setClientControlStatus("请先选择 Agent");
     return;
   }
-  const mfaCode = document.getElementById("control-mfa-code")?.value || "";
+
+  // 弹出 MFA 验证对话框
+  const mfaCode = await showMfaDialog("轮换离线授权码");
+  if (!mfaCode) {
+    return; // 用户取消
+  }
+
   const reason = document.getElementById("control-reason")?.value || "";
   const res = await api("/admin/agents/" + currentAgent + "/control/offline-code/rotate", {
     method: "POST",
@@ -948,12 +1109,47 @@ async function rotateOfflineAuthorizationCode() {
   await loadClientControlState();
 }
 
+async function getOfflineUninstallCode() {
+  const displayEl = document.getElementById("control-offline-uninstall-code-display");
+  if (!currentAgent) {
+    setClientControlStatus("请先选择 Agent");
+    if (displayEl) displayEl.textContent = "";
+    return;
+  }
+
+  // 弹出 MFA 验证对话框
+  const mfaCode = await showMfaDialog("获取离线卸载码");
+  if (!mfaCode) {
+    return; // 用户取消
+  }
+
+  const res = await api("/admin/agents/" + currentAgent + "/control/offline-uninstall-code?mfa_code=" + encodeURIComponent(mfaCode));
+  if (!res.ok) {
+    const text = await readError(res);
+    setClientControlStatus(text);
+    if (displayEl) displayEl.textContent = "";
+    return;
+  }
+
+  const data = await res.json();
+  if (displayEl) {
+    displayEl.textContent = "离线卸载码: " + (data.offline_uninstall_code || data.code || "获取失败");
+  }
+  setClientControlStatus({ status: "ok", action: "offline_uninstall_code_retrieved" });
+}
+
 async function createClientControlTask(taskType) {
   if (!currentAgent) {
     setClientControlStatus("请先选择 Agent");
     return;
   }
-  const mfaCode = document.getElementById("control-mfa-code")?.value || "";
+
+  // 弹出 MFA 验证对话框
+  const mfaCode = await showMfaDialog(getTaskTypeLabel(taskType));
+  if (!mfaCode) {
+    return; // 用户取消
+  }
+
   const reason = document.getElementById("control-reason")?.value || "";
   const res = await api("/admin/agents/" + currentAgent + "/control/task", {
     method: "POST",
@@ -968,6 +1164,15 @@ async function createClientControlTask(taskType) {
   await loadClientControlTasks();
 }
 
+function getTaskTypeLabel(taskType) {
+  const labels = {
+    "stop": "停止客户端",
+    "uninstall": "卸载客户端",
+    "activate": "激活客户端"
+  };
+  return labels[taskType] || taskType;
+}
+
 async function createSelectedClientControlTasks(taskType) {
   const statusEl = document.getElementById("agents-control-status");
   const ids = Array.from(selectedAgentIds);
@@ -975,7 +1180,13 @@ async function createSelectedClientControlTasks(taskType) {
     if (statusEl) statusEl.textContent = "请先选择至少一个客户端";
     return;
   }
-  const mfaCode = document.getElementById("agents-control-mfa")?.value || "";
+
+  // 弹出 MFA 验证对话框
+  const mfaCode = await showMfaDialog(getTaskTypeLabel(taskType) + " (" + ids.length + "个客户端)");
+  if (!mfaCode) {
+    return; // 用户取消
+  }
+
   const reason = document.getElementById("agents-control-reason")?.value || "";
   const results = [];
   for (const agentId of ids) {

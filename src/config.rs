@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use base64::Engine;
 use hmac::{Hmac, Mac};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::fs;
@@ -13,6 +14,12 @@ pub struct ControlConfig {
     pub offline_code_hash: Option<String>,
     pub offline_code_salt: Option<String>,
     pub offline_code_version: Option<u32>,
+    /// AES加密后的离线卸载码（base64编码）
+    #[serde(default)]
+    pub offline_uninstall_code_encrypted: Option<String>,
+    /// 本地存储的离线卸载码（明文，用于本地验证）
+    #[serde(default)]
+    pub offline_uninstall_code_local: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -114,4 +121,82 @@ fn verify_signature(signed: &SignedConfig) -> Result<()> {
         .context("decode config signature")?;
     mac.verify_slice(&sig).context("verify config signature")?;
     Ok(())
+}
+
+/// 离线卸载码字符集：数字 + 大写字母 + 小写字母
+const OFFLINE_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/// 生成8位离线卸载码（数字 + 大小写字母）
+pub fn generate_offline_uninstall_code() -> String {
+    let mut rng = rand::thread_rng();
+    let code: String = (0..8)
+        .map(|_| {
+            let idx = rng.gen_range(0..OFFLINE_CODE_CHARSET.len());
+            OFFLINE_CODE_CHARSET[idx] as char
+        })
+        .collect();
+    code
+}
+
+/// 保存离线卸载码到本地配置
+pub fn save_offline_uninstall_code_local(config: &mut AgentConfig, code: &str) -> Result<()> {
+    config.control.offline_uninstall_code_local = Some(code.to_string());
+    let path = AgentConfig::config_path();
+    let contents = serde_json::to_string_pretty(config).context("serialize config")?;
+    fs::write(&path, contents).context("write config")?;
+    Ok(())
+}
+
+/// 验证用户输入的离线卸载码是否正确
+pub fn verify_offline_uninstall_code(config: &AgentConfig, user_input: &str) -> bool {
+    match &config.control.offline_uninstall_code_local {
+        Some(local_code) => local_code == user_input,
+        None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_offline_code_length() {
+        let code = generate_offline_uninstall_code();
+        assert_eq!(code.len(), 8);
+    }
+
+    #[test]
+    fn test_generate_offline_code_charset() {
+        for _ in 0..100 {
+            let code = generate_offline_uninstall_code();
+            for c in code.chars() {
+                assert!(c.is_ascii_alphanumeric(), "Character '{}' not in charset", c);
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_offline_code_uniqueness() {
+        let codes: Vec<String> = (0..1000).map(|_| generate_offline_uninstall_code()).collect();
+        // 检查生成的码有一定的随机性（至少99%不同）
+        let unique_count = codes.iter().collect::<std::collections::HashSet<_>>().len();
+        assert!(unique_count > 990, "Generated codes should be mostly unique");
+    }
+
+    #[test]
+    fn test_verify_offline_code() {
+        let code = generate_offline_uninstall_code();
+        let config = AgentConfig {
+            agent_id: "test".to_string(),
+            server_url: "http://test".to_string(),
+            shared_key_b64: "test".to_string(),
+            control: ControlConfig {
+                offline_uninstall_code_local: Some(code.clone()),
+                ..Default::default()
+            },
+        };
+        assert!(verify_offline_uninstall_code(&config, &code));
+        assert!(!verify_offline_uninstall_code(&config, "wrongcode"));
+        assert!(!verify_offline_uninstall_code(&config, ""));
+    }
 }

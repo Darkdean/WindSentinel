@@ -26,15 +26,27 @@
     <div>
       <h3>客户端列表</h3>
       <div class="row">
-        <input id="agents-control-mfa" placeholder="下发停止/卸载前输入MFA验证码"/>
         <input id="agents-control-reason" placeholder="操作原因（可选）"/>
       </div>
       <div class="row">
         <button id="btn-agents-stop">停止选中客户端</button>
+        <button id="btn-agents-activate">激活选中客户端</button>
         <button id="btn-agents-uninstall">卸载选中客户端</button>
         <button id="btn-agents-delete">删除选中记录</button>
       </div>
-      <div id="agent-table"></div>
+      <table class="data-table" id="agent-table">
+        <thead>
+          <tr>
+            <th>选择</th>
+            <th>客户端ID</th>
+            <th>计算机名</th>
+            <th>系统序列号</th>
+            <th>状态</th>
+            <th>最后心跳</th>
+          </tr>
+        </thead>
+        <tbody id="agent-table-body"></tbody>
+      </table>
       <pre id="agents-control-status"></pre>
     </div>
     <div>
