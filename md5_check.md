@@ -12,7 +12,7 @@
 
 | 平台 | 架构 | 文件路径 | MD5 Hash | 更新日期 |
 |------|------|----------|----------|----------|
-| macOS | aarch64 | `installPack/macos/26/aarch64/WindSentinel-Agent.pkg` | `12f9162c928699b32ec2ad2a529ac60c` | 2026-04-13 |
+| macOS | aarch64 | `installPack/macos/26/aarch64/WindSentinel-Agent.pkg` | `06b3c3e298563290825d2634aa892a2c` | 2026-04-16 |
 
 ---
 
@@ -32,5 +32,4 @@ md5sum installPack/linux/xx/arch/WindSentinel-Agent.tar.gz
 
 | 版本 | 发布日期 | 说明 |
 |------|----------|------|
-| v26 | 2026-04-13 | 初始版本，支持 macOS aarch64 |
-
+| v26 | 2026-04-16 | 验收测试改进版本：离线卸载码、硬件信息、MFA弹窗、UI重构 |
