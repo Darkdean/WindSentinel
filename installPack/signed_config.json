@@ -1,0 +1,23 @@
+{
+  "config": {
+    "agent_id": "8b52d1df-80ed-4220-9885-cd3dbe679fdc",
+    "server_url": "https://127.0.0.1:8443",
+    "shared_key_b64": "",
+    "control": {
+      "service_name": "com.windsentinel.agent",
+      "offline_code_hash": "CbpmUSVK2VDtORllF7sN5v5G2aZwumMdczZz3+XGRWc=",
+      "offline_code_salt": "Y0R1yAb8UHlZZOCMx+r6ug==",
+      "offline_code_version": 1
+    }
+  },
+  "config_json": "{\"agent_id\":\"8b52d1df-80ed-4220-9885-cd3dbe679fdc\",\"control\":{\"offline_code_hash\":\"CbpmUSVK2VDtORllF7sN5v5G2aZwumMdczZz3+XGRWc=\",\"offline_code_salt\":\"Y0R1yAb8UHlZZOCMx+r6ug==\",\"offline_code_version\":1,\"service_name\":\"com.windsentinel.agent\"},\"server_url\":\"https://127.0.0.1:8443\",\"shared_key_b64\":\"\"}",
+  "signature": "1H/gGzrtaowcqXaxNiSWMGwXmLhSqPwA8kSx4CYLNJc=",
+  "signed_at": 1776306854,
+  "key_id": "shared_key",
+  "package": {
+    "agent_version": "unknown",
+    "binary_present": true,
+    "binary_sha256": "3f8e0e256e2d13426b684a1acb79a17a9279d6f07bf8c07f306cf86cb0c1a8f3",
+    "binary_size": 5515456
+  }
+}
